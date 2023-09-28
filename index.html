@@ -6,6 +6,21 @@
     <link rel="icon" type="image/x-icon" href="/javascript.svg" />
     <title>The M.S.V.</title>
     <style>
+      .responsive-canvas {
+        border: 1px solid #3a4b5c;
+        border-radius: 5px;
+        width: 100%; /* Full width on all screens */
+        height: auto; /* Automatically adjust height */
+      }
+
+      /* Media query for screens with a maximum width of 600px (adjust as needed) */
+      @media (max-width: 600px) {
+        .responsive-canvas {
+          width: 90%; /* Reduce width for smaller screens */
+          max-width: 400px; /* Maximum width for small screens */
+        }
+      }
+      
       body {
         font-family: Arial, sans-serif;
         margin: 1rem;
@@ -100,7 +115,7 @@
   </head>
   <body>
     <div class="container">
-      <canvas id="mandelbrotCanvas" width="1200" height="900"></canvas>
+      <canvas id="mandelbrotCanvas" class="responsive-canvas" width="1200" height="900"></canvas>      
       <div class="controls">
         <div class="control-group">
           <label for="xInput">X:</label>
