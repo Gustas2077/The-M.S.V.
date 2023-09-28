@@ -155,9 +155,9 @@
     <script>
       const canvas = document.getElementById("mandelbrotCanvas");
       const ctx = canvas.getContext("2d");
-
-      const WIDTH = canvas.width;
-      const HEIGHT = canvas.height;
+    
+      let canvasWidth = canvas.width; // Store the initial canvas width
+      let canvasHeight = canvas.height; // Store the initial canvas height
 
       // Define initial zoom level
       let zoomLevel = 1.9; // Initial zoom level
@@ -259,31 +259,40 @@
         renderMandelbrot();
       });
 
+      // Function to calculate click coordinates relative to canvas size
+      function calculateCanvasClick(event) {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+        const canvasX = (clickX / rect.width) * canvasWidth;
+        const canvasY = (clickY / rect.height) * canvasHeight;
+        return { x: canvasX, y: canvasY };
+      }
+    
       // Event listener for canvas click
       canvas.addEventListener("click", handleCanvasClick);
-
+    
       // Function to handle canvas click
       function handleCanvasClick(event) {
         // Calculate the complex coordinate corresponding to the pointer position
-        const clickX = event.clientX - canvas.getBoundingClientRect().left;
-        const clickY = event.clientY - canvas.getBoundingClientRect().top;
+        const click = calculateCanvasClick(event);
         const clickC = {
-          real: RE_START + (clickX / WIDTH) * (RE_END - RE_START),
-          imaginary: IM_START + (clickY / HEIGHT) * (IM_END - IM_START),
+          real: RE_START + (click.x / canvasWidth) * (RE_END - RE_START),
+          imaginary: IM_START + (click.y / canvasHeight) * (IM_END - IM_START),
         };
-
+    
         // Calculate the new zoom level with reduced zoom factor
         const newZoomLevel = zoomLevel / ZOOM_FACTOR;
-
+    
         // Ensure the new zoom level is within bounds
         if (newZoomLevel >= 1) {
           zoomLevel = newZoomLevel;
         }
-
+    
         // Adjust the position centered around the pointer's position
         x = clickC.real;
         y = clickC.imaginary;
-
+    
         // Trigger canvas rendering
         renderMandelbrot();
       }
