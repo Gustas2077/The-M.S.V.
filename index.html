@@ -27,7 +27,7 @@
         box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
         padding: 20px;
         width: 80%;
-        max-width: 800px;
+        max-width: 1200px;
       }
 
       canvas {
@@ -100,7 +100,7 @@
   </head>
   <body>
     <div class="container">
-      <canvas id="mandelbrotCanvas" width="800" height="600"></canvas>
+      <canvas id="mandelbrotCanvas" width="1200" height="900"></canvas>
       <div class="controls">
         <div class="control-group">
           <label for="xInput">X:</label>
@@ -112,10 +112,9 @@
         </div>
         <div class="control-group">
           <label for="iterationsInput">Iterations:</label>
-          <input type="number" id="iterationsInput" value="1000" />
+          <input type="number" id="iterationsInput" value="4000" step="1000" />
         </div>
         <div class="control-group">
-          <button id="generateButton">Generate</button>
           <button id="resetImageButton">Reset Canvas</button>
         </div>
       </div>
@@ -153,8 +152,6 @@
       // Adjust the zoom factor to control zoom speed
       const ZOOM_FACTOR = 2; // Adjust this value as needed
 
-      let MAX_ITER = 1000;
-
       // Define the region of the complex plane to render
       let RE_START = -2;
       let RE_END = 2;
@@ -168,9 +165,11 @@
       const xValue = document.getElementById("xValue");
       const yValue = document.getElementById("yValue");
       const iterationsInput = document.getElementById("iterationsInput");
-      const generateButton = document.getElementById("generateButton");
       const resetImageButton = document.getElementById("resetImageButton");
       const statusText = document.getElementById("statusText");
+
+      // Define the maximum number of iterations
+      let MAX_ITER = 1000; // You can adjust this value
 
       function mandelbrot(c) {
         let z = { real: 0, imaginary: 0 };
@@ -206,9 +205,6 @@
         xValue.textContent = x.toFixed(2); // Update display for X
         yValue.textContent = y.toFixed(2); // Update display for Y
 
-        // Get user-defined iterations
-        MAX_ITER = parseInt(iterationsInput.value);
-
         // Calculate a factor based on zoom level for coloring
         const colorFactor = zoomLevel;
 
@@ -233,6 +229,22 @@
           }
         }
       }
+
+      iterationsInput.addEventListener("input", () => {
+        // Get the user-defined iterations
+        const newIterations = parseInt(iterationsInput.value);
+
+        // Ensure it's not zero or negative
+        if (newIterations <= 0) {
+          iterationsInput.value = "1"; // Set it to 1 (or any minimum value you prefer)
+        }
+
+        // Update the MAX_ITER value
+        MAX_ITER = parseInt(iterationsInput.value);
+
+        // Trigger canvas rendering
+        renderMandelbrot();
+      });
 
       // Event listener for canvas click
       canvas.addEventListener("click", handleCanvasClick);
@@ -262,13 +274,6 @@
         // Trigger canvas rendering
         renderMandelbrot();
       }
-
-      // Add a click event listener to the "Generate" button
-      generateButton.addEventListener("click", () => {
-        // Reset the zoom level to the initial value
-        zoomLevel = 1.0;
-        renderMandelbrot();
-      });
 
       // Event listener for the "Reset Image" button
       resetImageButton.addEventListener("click", () => {
