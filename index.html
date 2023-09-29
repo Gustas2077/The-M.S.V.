@@ -14,48 +14,74 @@
 				<h1 class="text-6xl font-bold">The M.S.V.</h1>
 				<span class="text-2xl">Mandelbrot Set Viewer</span>
 			</section>
-			<section>
+			<section class="flex flex-col gap-2 max-w-5xl">
 				<canvas
 					class="border border-slate-700"
 					width="800"
 					height="400"
 					data-canvas
 				></canvas>
-				<div class="flex flex-col gap-2">
-					<label class="flex flex-col gap-1">
-						<span>Value of X</span>
-						<input
-							class="bg-transparent text-white border border-slate-700 rounded px-2 py-1"
-							type="number"
-							value="0"
-							data-x
-						/>
-					</label>
-					<label class="flex flex-col gap-1">
-						<span>Value of Y</span>
-						<input
-							class="bg-transparent text-white border border-slate-700 rounded px-2 py-1"
-							type="number"
-							value="0"
-							data-y
-						/>
-					</label>
-					<label class="flex flex-col gap-1">
-						<span>Iterations</span>
-						<input
-							class="bg-transparent text-white border border-slate-700 rounded px-2 py-1"
-							type="number"
-							value="100"
-							data-iterations
-						/>
-					</label>
-					<button
-						class="bg-slate-800 text-white p-2"
-						data-button
-						data-reset-button
-					>
-						Reset
-					</button>
+				<div class="flex gap-2">
+					<div class="flex flex-col gap-2 max-w-sm w-full">
+						<h3 class="text-xl font-bold">Controls</h3>
+						<label class="flex flex-col gap-1">
+							<span>Value of X</span>
+							<input
+								class="bg-transparent text-white border border-slate-700 rounded px-2 py-1"
+								type="number"
+								value="0"
+								data-x
+							/>
+						</label>
+						<label class="flex flex-col gap-1">
+							<span>Value of Y</span>
+							<input
+								class="bg-transparent text-white border border-slate-700 rounded px-2 py-1"
+								type="number"
+								value="0"
+								data-y
+							/>
+						</label>
+						<label class="flex flex-col gap-1">
+							<span>Iterations</span>
+							<input
+								class="bg-transparent text-white border border-slate-700 rounded px-2 py-1"
+								type="number"
+								value="100"
+								data-iterations
+							/>
+						</label>
+						<button
+							class="bg-slate-800 text-white p-2"
+							data-button
+							data-reset-button
+						>
+							Reset
+						</button>
+					</div>
+					<div class="flex flex-col gap-2">
+						<h3 class="text-xl font-bold">How it works</h3>
+						<p>
+							The Mandelbrot set is a set of complex numbers that are plotted on
+							a complex plane. The set is defined by the following equation:
+							<code class="bg-slate-800 text-white p-2">
+								z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + c
+							</code>
+						</p>
+						<p>
+							Where <code>c</code> is a complex number and <code>z</code> is a
+							complex number that is part of the set. The set is defined by the
+							complex numbers that do not diverge when the equation is iterated
+							infinitely.
+						</p>
+						<p>
+							To visualize the set, the complex numbers are plotted on a complex
+							plane. The real part of the complex number is the x coordinate and
+							the imaginary part is the y coordinate. The color of the pixel
+							indicates how many iterations it took for the complex number to
+							diverge. The more iterations it takes, the darker the pixel.
+						</p>
+					</div>
 				</div>
 			</section>
 		</main>

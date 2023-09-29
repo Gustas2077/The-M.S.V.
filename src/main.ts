@@ -143,8 +143,18 @@ canvas.addEventListener("click", event => {
 
 // Event listener for the "Reset Image" button
 resetButton.addEventListener("click", () => {
-	// Reload the page to reset the image
-	window.location.href = window.location.href;
+	// Reset the zoom level
+	zoomLevel = 1.9;
+
+	// Reset the position
+	x = -0.5;
+	y = 0;
+
+	// Reset the iterations
+	MAX_ITER = 1000;
+
+	// Trigger canvas rendering
+	renderMandelbrot();
 });
 
 // Initial rendering
