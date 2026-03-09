@@ -55,6 +55,11 @@ const PALETTE = buildPalette(8192);
 let view = { ...DEFAULT_VIEW };
 let maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 400);
 let renderToken = 0;
+let isDragging = false;
+let dragMoved = false;
+let dragStartPoint = { x: 0, y: 0 };
+let dragStartView: ViewBounds = { ...DEFAULT_VIEW };
+let dragRenderQueued = false;
 
 const workerCount = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1 || 1));
 workerCountEl.textContent = String(workerCount);
@@ -225,6 +230,17 @@ function getCanvasPoint(event: MouseEvent) {
 	};
 }
 
+function queueDragRender() {
+	if (dragRenderQueued) {
+		return;
+	}
+	dragRenderQueued = true;
+	requestAnimationFrame(() => {
+		dragRenderQueued = false;
+		renderMandelbrot();
+	});
+}
+
 canvas.addEventListener("mousemove", event => {
 	const p = getCanvasPoint(event);
 	const c = screenToComplex(p.x, p.y);
@@ -233,9 +249,53 @@ canvas.addEventListener("mousemove", event => {
 	canvasYEl.textContent = p.y.toFixed(0);
 	realXEl.textContent = c.re.toFixed(10);
 	imagYEl.textContent = c.im.toFixed(10);
+
+	if (isDragging) {
+		const dx = p.x - dragStartPoint.x;
+		const dy = p.y - dragStartPoint.y;
+		if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+			dragMoved = true;
+		}
+
+		const scaleX = (dragStartView.maxX - dragStartView.minX) / canvas.width;
+		const scaleY = (dragStartView.maxY - dragStartView.minY) / canvas.height;
+
+		view.minX = dragStartView.minX - dx * scaleX;
+		view.maxX = dragStartView.maxX - dx * scaleX;
+		view.minY = dragStartView.minY - dy * scaleY;
+		view.maxY = dragStartView.maxY - dy * scaleY;
+
+		queueDragRender();
+	}
+});
+
+canvas.addEventListener("mousedown", event => {
+	if (event.button !== 0) {
+		return;
+	}
+
+	const p = getCanvasPoint(event);
+	isDragging = true;
+	dragMoved = false;
+	dragStartPoint = p;
+	dragStartView = { ...view };
+	canvas.style.cursor = "grabbing";
+});
+
+window.addEventListener("mouseup", event => {
+	if (event.button !== 0) {
+		return;
+	}
+	isDragging = false;
+	canvas.style.cursor = "crosshair";
 });
 
 canvas.addEventListener("click", event => {
+	if (dragMoved) {
+		dragMoved = false;
+		return;
+	}
+
 	const p = getCanvasPoint(event);
 	zoomAt(p.x, p.y, ZOOM_IN_FACTOR);
 	renderMandelbrot();

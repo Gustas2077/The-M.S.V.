@@ -1,4 +1,26 @@
-﻿self.onmessage = event => {
+type RenderJob = {
+	renderId: number;
+	width: number;
+	height: number;
+	yStart: number;
+	yEnd: number;
+	maxIter: number;
+	view: {
+		minX: number;
+		maxX: number;
+		minY: number;
+		maxY: number;
+	};
+};
+
+type WorkerScopeLike = {
+	onmessage: ((event: MessageEvent<RenderJob>) => void) | null;
+	postMessage: (message: unknown, transfer?: Transferable[]) => void;
+};
+
+const workerScope = self as unknown as WorkerScopeLike;
+
+workerScope.onmessage = (event: MessageEvent<RenderJob>) => {
 	const { renderId, width, height, yStart, yEnd, maxIter, view } = event.data;
 
 	const rowCount = yEnd - yStart;
@@ -41,10 +63,10 @@
 		}
 	}
 
-	self.postMessage(
-		{ renderId, yStart, values: values.buffer, histogram: histogram.buffer },
-		[values.buffer, histogram.buffer]
-	);
+	workerScope.postMessage({ renderId, yStart, values: values.buffer, histogram: histogram.buffer }, [
+		values.buffer,
+		histogram.buffer,
+	]);
 };
 
 export {};
