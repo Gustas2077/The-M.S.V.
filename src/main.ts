@@ -20,6 +20,14 @@ function getRequiredElement<T extends Element>(selector: string): T {
 	return el as T;
 }
 
+function getRequired2DContext(targetCanvas: HTMLCanvasElement): CanvasRenderingContext2D {
+	const ctx = targetCanvas.getContext("2d", { alpha: false, desynchronized: true });
+	if (!ctx) {
+		throw new Error("2D canvas context unavailable.");
+	}
+	return ctx;
+}
+
 const canvas = getRequiredElement<HTMLCanvasElement>("[data-canvas]");
 const xInput = getRequiredElement<HTMLInputElement>("[data-x]");
 const yInput = getRequiredElement<HTMLInputElement>("[data-y]");
@@ -37,10 +45,7 @@ const maxXEl = getRequiredElement<HTMLElement>("[data-max-x]");
 const minYEl = getRequiredElement<HTMLElement>("[data-min-y]");
 const maxYEl = getRequiredElement<HTMLElement>("[data-max-y]");
 
-const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
-if (!ctx) {
-	throw new Error("2D canvas context unavailable.");
-}
+const ctx = getRequired2DContext(canvas);
 
 const DEFAULT_VIEW: ViewBounds = { minX: -2, maxX: 1, minY: -1, maxY: 1 };
 const ZOOM_IN_FACTOR = 0.5;
