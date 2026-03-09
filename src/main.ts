@@ -58,8 +58,9 @@ let renderToken = 0;
 let isDragging = false;
 let dragMoved = false;
 let dragStartPoint = { x: 0, y: 0 };
+let dragCurrentPoint = { x: 0, y: 0 };
 let dragStartView: ViewBounds = { ...DEFAULT_VIEW };
-let dragRenderQueued = false;
+let dragPreviewCanvas: HTMLCanvasElement | null = null;
 
 const workerCount = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1 || 1));
 workerCountEl.textContent = String(workerCount);
@@ -220,53 +221,24 @@ function zoomAt(canvasX: number, canvasY: number, factor: number) {
 	view.maxY = view.minY + height;
 }
 
-function getCanvasPoint(event: MouseEvent) {
+function getCanvasPointFromClient(clientX: number, clientY: number) {
 	const rect = canvas.getBoundingClientRect();
-	const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-	const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+	const x = ((clientX - rect.left) / rect.width) * canvas.width;
+	const y = ((clientY - rect.top) / rect.height) * canvas.height;
 	return {
 		x: Math.max(0, Math.min(canvas.width - 1, x)),
 		y: Math.max(0, Math.min(canvas.height - 1, y)),
 	};
 }
 
-function queueDragRender() {
-	if (dragRenderQueued) {
-		return;
-	}
-	dragRenderQueued = true;
-	requestAnimationFrame(() => {
-		dragRenderQueued = false;
-		renderMandelbrot();
-	});
-}
-
 canvas.addEventListener("mousemove", event => {
-	const p = getCanvasPoint(event);
+	const p = getCanvasPointFromClient(event.clientX, event.clientY);
 	const c = screenToComplex(p.x, p.y);
 
 	canvasXEl.textContent = p.x.toFixed(0);
 	canvasYEl.textContent = p.y.toFixed(0);
 	realXEl.textContent = c.re.toFixed(10);
 	imagYEl.textContent = c.im.toFixed(10);
-
-	if (isDragging) {
-		const dx = p.x - dragStartPoint.x;
-		const dy = p.y - dragStartPoint.y;
-		if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-			dragMoved = true;
-		}
-
-		const scaleX = (dragStartView.maxX - dragStartView.minX) / canvas.width;
-		const scaleY = (dragStartView.maxY - dragStartView.minY) / canvas.height;
-
-		view.minX = dragStartView.minX - dx * scaleX;
-		view.maxX = dragStartView.maxX - dx * scaleX;
-		view.minY = dragStartView.minY - dy * scaleY;
-		view.maxY = dragStartView.maxY - dy * scaleY;
-
-		queueDragRender();
-	}
 });
 
 canvas.addEventListener("mousedown", event => {
@@ -274,19 +246,63 @@ canvas.addEventListener("mousedown", event => {
 		return;
 	}
 
-	const p = getCanvasPoint(event);
+	const p = getCanvasPointFromClient(event.clientX, event.clientY);
 	isDragging = true;
 	dragMoved = false;
 	dragStartPoint = p;
+	dragCurrentPoint = p;
 	dragStartView = { ...view };
 	canvas.style.cursor = "grabbing";
+
+	dragPreviewCanvas = document.createElement("canvas");
+	dragPreviewCanvas.width = canvas.width;
+	dragPreviewCanvas.height = canvas.height;
+	const previewCtx = dragPreviewCanvas.getContext("2d");
+	if (previewCtx) {
+		previewCtx.drawImage(canvas, 0, 0);
+	}
+});
+
+window.addEventListener("mousemove", event => {
+	if (!isDragging) {
+		return;
+	}
+
+	const p = getCanvasPointFromClient(event.clientX, event.clientY);
+	dragCurrentPoint = p;
+
+	const dx = p.x - dragStartPoint.x;
+	const dy = p.y - dragStartPoint.y;
+	if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+		dragMoved = true;
+	}
+
+	if (dragPreviewCanvas) {
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		ctx.drawImage(dragPreviewCanvas, dx, dy);
+	}
 });
 
 window.addEventListener("mouseup", event => {
 	if (event.button !== 0) {
 		return;
 	}
+
+	if (isDragging && dragMoved) {
+		const dx = dragCurrentPoint.x - dragStartPoint.x;
+		const dy = dragCurrentPoint.y - dragStartPoint.y;
+		const scaleX = (dragStartView.maxX - dragStartView.minX) / canvas.width;
+		const scaleY = (dragStartView.maxY - dragStartView.minY) / canvas.height;
+
+		view.minX = dragStartView.minX - dx * scaleX;
+		view.maxX = dragStartView.maxX - dx * scaleX;
+		view.minY = dragStartView.minY - dy * scaleY;
+		view.maxY = dragStartView.maxY - dy * scaleY;
+		renderMandelbrot();
+	}
+
 	isDragging = false;
+	dragPreviewCanvas = null;
 	canvas.style.cursor = "crosshair";
 });
 
@@ -296,14 +312,14 @@ canvas.addEventListener("click", event => {
 		return;
 	}
 
-	const p = getCanvasPoint(event);
+	const p = getCanvasPointFromClient(event.clientX, event.clientY);
 	zoomAt(p.x, p.y, ZOOM_IN_FACTOR);
 	renderMandelbrot();
 });
 
 canvas.addEventListener("contextmenu", event => {
 	event.preventDefault();
-	const p = getCanvasPoint(event);
+	const p = getCanvasPointFromClient(event.clientX, event.clientY);
 	zoomAt(p.x, p.y, ZOOM_OUT_FACTOR);
 	renderMandelbrot();
 });
