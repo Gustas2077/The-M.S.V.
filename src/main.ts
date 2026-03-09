@@ -12,43 +12,30 @@ type WorkerResponse = {
 	histogram: ArrayBuffer;
 };
 
-const canvas = document.querySelector("[data-canvas]") as HTMLCanvasElement | null;
-const xInput = document.querySelector("[data-x]") as HTMLInputElement | null;
-const yInput = document.querySelector("[data-y]") as HTMLInputElement | null;
-const iterationsInput = document.querySelector("[data-iterations]") as HTMLInputElement | null;
-const resetButton = document.querySelector("[data-reset-button]") as HTMLButtonElement | null;
-const renderMsEl = document.querySelector("[data-render-ms]") as HTMLElement | null;
-const workerCountEl = document.querySelector("[data-worker-count]") as HTMLElement | null;
-const renderStatusEl = document.querySelector("[data-render-status]") as HTMLElement | null;
-const canvasXEl = document.querySelector("[data-canvas-x]") as HTMLElement | null;
-const canvasYEl = document.querySelector("[data-canvas-y]") as HTMLElement | null;
-const realXEl = document.querySelector("[data-real-x]") as HTMLElement | null;
-const imagYEl = document.querySelector("[data-imag-y]") as HTMLElement | null;
-const minXEl = document.querySelector("[data-min-x]") as HTMLElement | null;
-const maxXEl = document.querySelector("[data-max-x]") as HTMLElement | null;
-const minYEl = document.querySelector("[data-min-y]") as HTMLElement | null;
-const maxYEl = document.querySelector("[data-max-y]") as HTMLElement | null;
-
-if (
-	!canvas ||
-	!xInput ||
-	!yInput ||
-	!iterationsInput ||
-	!resetButton ||
-	!renderMsEl ||
-	!workerCountEl ||
-	!renderStatusEl ||
-	!canvasXEl ||
-	!canvasYEl ||
-	!realXEl ||
-	!imagYEl ||
-	!minXEl ||
-	!maxXEl ||
-	!minYEl ||
-	!maxYEl
-) {
-	throw new Error("Missing required DOM elements.");
+function getRequiredElement<T extends Element>(selector: string): T {
+	const el = document.querySelector(selector);
+	if (!el) {
+		throw new Error(`Missing required DOM element: ${selector}`);
+	}
+	return el as T;
 }
+
+const canvas = getRequiredElement<HTMLCanvasElement>("[data-canvas]");
+const xInput = getRequiredElement<HTMLInputElement>("[data-x]");
+const yInput = getRequiredElement<HTMLInputElement>("[data-y]");
+const iterationsInput = getRequiredElement<HTMLInputElement>("[data-iterations]");
+const resetButton = getRequiredElement<HTMLButtonElement>("[data-reset-button]");
+const renderMsEl = getRequiredElement<HTMLElement>("[data-render-ms]");
+const workerCountEl = getRequiredElement<HTMLElement>("[data-worker-count]");
+const renderStatusEl = getRequiredElement<HTMLElement>("[data-render-status]");
+const canvasXEl = getRequiredElement<HTMLElement>("[data-canvas-x]");
+const canvasYEl = getRequiredElement<HTMLElement>("[data-canvas-y]");
+const realXEl = getRequiredElement<HTMLElement>("[data-real-x]");
+const imagYEl = getRequiredElement<HTMLElement>("[data-imag-y]");
+const minXEl = getRequiredElement<HTMLElement>("[data-min-x]");
+const maxXEl = getRequiredElement<HTMLElement>("[data-max-x]");
+const minYEl = getRequiredElement<HTMLElement>("[data-min-y]");
+const maxYEl = getRequiredElement<HTMLElement>("[data-max-y]");
 
 const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 if (!ctx) {
