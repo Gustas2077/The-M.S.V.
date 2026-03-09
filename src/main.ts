@@ -1,161 +1,223 @@
-const canvas = document.querySelector("[data-canvas]") as HTMLCanvasElement;
-const xValue = document.querySelector("[data-x]");
-const yValue = document.querySelector("[data-y]");
-const iterationsInput = document.querySelector(
-	"[data-iterations]"
-) as HTMLInputElement;
-const resetButton = document.querySelector(
-	"[data-reset-button]"
-) as HTMLButtonElement;
+const canvas = document.querySelector("[data-canvas]") as HTMLCanvasElement | null;
+const xValue = document.querySelector("[data-x]") as HTMLInputElement | null;
+const yValue = document.querySelector("[data-y]") as HTMLInputElement | null;
+const iterationsInput = document.querySelector("[data-iterations]") as HTMLInputElement | null;
+const resetButton = document.querySelector("[data-reset-button]") as HTMLButtonElement | null;
 
-const ctx = canvas.getContext("2d");
+if (!canvas || !xValue || !yValue || !iterationsInput || !resetButton) {
+	throw new Error("Required UI elements are missing.");
+}
 
-let canvasWidth = canvas.width; // Store the initial canvas width
-let canvasHeight = canvas.height; // Store the initial canvas height
+const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+if (!ctx) {
+	throw new Error("2D canvas context unavailable.");
+}
 
-// Define initial zoom level
-let zoomLevel = 1.9; // Initial zoom level
+const DEFAULT_VIEW = {
+	minX: -2,
+	maxX: 1,
+	minY: -1,
+	maxY: 1,
+};
 
-// Adjust the zoom factor to control zoom speed
-const ZOOM_FACTOR = 2; // Adjust this value as needed
+const ZOOM_IN_FACTOR = 0.5;
+const ZOOM_OUT_FACTOR = 2;
+const PALETTE = buildPalette(8192);
 
-// Define the region of the complex plane to render
-let RE_START = -2;
-let RE_END = 2;
-let IM_START = -2;
-let IM_END = 2;
+let maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 400);
+let view = { ...DEFAULT_VIEW };
+let renderToken = 0;
 
-let x = -0.5;
-let y = 0;
+function buildPalette(size: number): Uint8Array {
+	const lut = new Uint8Array(size * 3);
+	for (let i = 0; i < size; i++) {
+		const t = i / (size - 1);
+		const phase = Math.PI * 2 * (0.5 + 1.25 * t);
+		const sat = 0.82 + 0.18 * Math.sin(Math.PI * 2 * t);
+		const val = 0.15 + 0.85 * t;
+		const r = 0.5 + 0.5 * Math.sin(phase);
+		const g = 0.5 + 0.5 * Math.sin(phase + 2.0943951023931953);
+		const b = 0.5 + 0.5 * Math.sin(phase + 4.1887902047863905);
 
-// Define the maximum number of iterations
-let MAX_ITER = 1000; // You can adjust this value
+		lut[i * 3] = Math.min(255, (255 * val * (r * sat + (1 - sat))) | 0);
+		lut[i * 3 + 1] = Math.min(255, (255 * val * (g * sat + (1 - sat))) | 0);
+		lut[i * 3 + 2] = Math.min(255, (255 * val * (b * sat + (1 - sat))) | 0);
+	}
+	return lut;
+}
 
-function mandelbrot(c: { real: number; imaginary: number }) {
-	let z = { real: 0, imaginary: 0 };
+function escapeTimeSmooth(re: number, im: number): number {
+	let zr = 0;
+	let zi = 0;
+	let zr2 = 0;
+	let zi2 = 0;
 	let n = 0;
 
-	while (z.real * z.real + z.imaginary * z.imaginary <= 4 && n < MAX_ITER) {
-		const tempReal = z.real * z.real - z.imaginary * z.imaginary + c.real;
-		const tempImaginary = 2 * z.real * z.imaginary + c.imaginary;
-		z.real = tempReal;
-		z.imaginary = tempImaginary;
-		n++;
+	while (zr2 + zi2 <= 4 && n < maxIter) {
+		zi = 2 * zr * zi + im;
+		zr = zr2 - zi2 + re;
+		zr2 = zr * zr;
+		zi2 = zi * zi;
+		n += 1;
 	}
 
-	return n;
+	if (n === maxIter) {
+		return maxIter;
+	}
+
+	const magnitude2 = zr2 + zi2;
+	const smooth = n + 1 - Math.log2(Math.log2(magnitude2));
+	return Number.isFinite(smooth) ? smooth : n;
+}
+
+function screenToComplex(canvasX: number, canvasY: number) {
+	return {
+		re: view.minX + (canvasX / canvas.width) * (view.maxX - view.minX),
+		im: view.minY + (canvasY / canvas.height) * (view.maxY - view.minY),
+	};
+}
+
+function updateUIForCenter() {
+	const centerX = (view.minX + view.maxX) * 0.5;
+	const centerY = (view.minY + view.maxY) * 0.5;
+	xValue.value = centerX.toFixed(8);
+	yValue.value = centerY.toFixed(8);
+	iterationsInput.value = String(maxIter);
 }
 
 function renderMandelbrot() {
-	if (!ctx) return;
+	const token = ++renderToken;
+	const width = canvas.width;
+	const height = canvas.height;
 
-	// Clear the canvas
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	const values = new Float32Array(width * height);
+	const histogram = new Uint32Array(maxIter + 1);
+	const scaleX = (view.maxX - view.minX) / width;
+	const scaleY = (view.maxY - view.minY) / height;
 
-	// Calculate the region of the complex plane based on user-defined parameters
-	const halfWidth = (RE_END - RE_START) / 2;
-	const halfHeight = (IM_END - IM_START) / 2;
-	RE_START = x - halfWidth / zoomLevel;
-	RE_END = x + halfWidth / zoomLevel;
-	IM_START = y - halfHeight / zoomLevel;
-	IM_END = y + halfHeight / zoomLevel;
-
-	if (!xValue || !yValue) return;
-
-	// Update display values
-	xValue.textContent = x.toFixed(2); // Update display for X
-	yValue.textContent = y.toFixed(2); // Update display for Y
-
-	// Calculate a factor based on zoom level for coloring
-	const colorFactor = zoomLevel;
-
-	// Render the Mandelbrot set with the current parameters
-	for (let x = 0; x < canvas.width; x++) {
-		for (let y = 0; y < canvas.height; y++) {
-			const c = {
-				real: RE_START + (x / canvas.width) * (RE_END - RE_START),
-				imaginary: IM_START + (y / canvas.height) * (IM_END - IM_START),
-			};
-
-			const m = mandelbrot(c);
-
-			// Set the pixel color based on the number of iterations and zoom level
-			ctx.fillStyle =
-				m === MAX_ITER
-					? "black"
-					: `hsl(${
-							((m % MAX_ITER) / MAX_ITER) * 360 * colorFactor
-					  }, 100%, 50%)`;
-			ctx.fillRect(x, y, 1, 1);
+	let idx = 0;
+	for (let y = 0; y < height; y++) {
+		const im = view.minY + y * scaleY;
+		for (let x = 0; x < width; x++) {
+			const re = view.minX + x * scaleX;
+			const m = escapeTimeSmooth(re, im);
+			values[idx++] = m;
+			if (m < maxIter) {
+				histogram[m | 0] += 1;
+			}
 		}
 	}
+
+	if (token !== renderToken) {
+		return;
+	}
+
+	const cdf = new Float32Array(maxIter + 1);
+	let total = 0;
+	for (let i = 0; i < maxIter; i++) {
+		total += histogram[i];
+	}
+
+	if (total > 0) {
+		let running = 0;
+		for (let i = 0; i < maxIter; i++) {
+			running += histogram[i];
+			cdf[i] = running / total;
+		}
+		cdf[maxIter] = 1;
+	}
+
+	const image = ctx.createImageData(width, height);
+	const pixels = image.data;
+	const paletteLen = PALETTE.length / 3 - 1;
+
+	for (let i = 0, p = 0; i < values.length; i++, p += 4) {
+		const m = values[i];
+		if (m >= maxIter) {
+			pixels[p] = 0;
+			pixels[p + 1] = 0;
+			pixels[p + 2] = 0;
+			pixels[p + 3] = 255;
+			continue;
+		}
+
+		const floorIdx = m | 0;
+		const frac = m - floorIdx;
+		const c0 = cdf[floorIdx] || 0;
+		const c1 = cdf[Math.min(maxIter, floorIdx + 1)] || c0;
+		const t = c0 + (c1 - c0) * frac;
+		const lutIdx = Math.min(paletteLen, (t * paletteLen) | 0) * 3;
+
+		pixels[p] = PALETTE[lutIdx];
+		pixels[p + 1] = PALETTE[lutIdx + 1];
+		pixels[p + 2] = PALETTE[lutIdx + 2];
+		pixels[p + 3] = 255;
+	}
+
+	ctx.putImageData(image, 0, 0);
+	updateUIForCenter();
 }
 
-// Event listener for the "Zoom In" button
-iterationsInput.addEventListener("blur", () => {
-	// Get the user-defined iterations
-	const newIterations = parseInt(iterationsInput.value);
-
-	// Ensure it's not zero or negative
-	if (newIterations <= 0) iterationsInput.value = "1";
-
-	// Update the MAX_ITER value
-	MAX_ITER = parseInt(iterationsInput.value);
-
-	// Trigger canvas rendering
-	renderMandelbrot();
-});
-
-// Function to calculate click coordinates relative to canvas size
 function calculateCanvasClick(event: MouseEvent) {
 	const rect = canvas.getBoundingClientRect();
 	const clickX = event.clientX - rect.left;
 	const clickY = event.clientY - rect.top;
-	const canvasX = (clickX / rect.width) * canvasWidth;
-	const canvasY = (clickY / rect.height) * canvasHeight;
+	const canvasX = (clickX / rect.width) * canvas.width;
+	const canvasY = (clickY / rect.height) * canvas.height;
 	return { x: canvasX, y: canvasY };
 }
 
-// Event listener for canvas click
+function zoomAt(canvasX: number, canvasY: number, factor: number) {
+	const p = screenToComplex(canvasX, canvasY);
+	const width = (view.maxX - view.minX) * factor;
+	const height = (view.maxY - view.minY) * factor;
+
+	view.minX = p.re - (canvasX / canvas.width) * width;
+	view.maxX = view.minX + width;
+	view.minY = p.im - (canvasY / canvas.height) * height;
+	view.maxY = view.minY + height;
+}
+
+iterationsInput.addEventListener("change", () => {
+	maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 1);
+	renderMandelbrot();
+});
+
 canvas.addEventListener("click", event => {
-	// Calculate the complex coordinate corresponding to the pointer position
 	const click = calculateCanvasClick(event);
-	const clickC = {
-		real: RE_START + (click.x / canvasWidth) * (RE_END - RE_START),
-		imaginary: IM_START + (click.y / canvasHeight) * (IM_END - IM_START),
-	};
-
-	// Calculate the new zoom level with reduced zoom factor
-	const newZoomLevel = zoomLevel / ZOOM_FACTOR;
-
-	// Ensure the new zoom level is within bounds
-	if (newZoomLevel >= 1) {
-		zoomLevel = newZoomLevel;
-	}
-
-	// Adjust the position centered around the pointer's position
-	x = clickC.real;
-	y = clickC.imaginary;
-
-	// Trigger canvas rendering
+	zoomAt(click.x, click.y, ZOOM_IN_FACTOR);
 	renderMandelbrot();
 });
 
-// Event listener for the "Reset Image" button
+canvas.addEventListener("contextmenu", event => {
+	event.preventDefault();
+	const click = calculateCanvasClick(event);
+	zoomAt(click.x, click.y, ZOOM_OUT_FACTOR);
+	renderMandelbrot();
+});
+
+xValue.addEventListener("change", () => {
+	const nextX = Number.parseFloat(xValue.value);
+	if (!Number.isFinite(nextX)) return;
+	const halfWidth = (view.maxX - view.minX) * 0.5;
+	view.minX = nextX - halfWidth;
+	view.maxX = nextX + halfWidth;
+	renderMandelbrot();
+});
+
+yValue.addEventListener("change", () => {
+	const nextY = Number.parseFloat(yValue.value);
+	if (!Number.isFinite(nextY)) return;
+	const halfHeight = (view.maxY - view.minY) * 0.5;
+	view.minY = nextY - halfHeight;
+	view.maxY = nextY + halfHeight;
+	renderMandelbrot();
+});
+
 resetButton.addEventListener("click", () => {
-	// Reset the zoom level
-	zoomLevel = 1.9;
-
-	// Reset the position
-	x = -0.5;
-	y = 0;
-
-	// Reset the iterations
-	MAX_ITER = 1000;
-
-	// Trigger canvas rendering
+	view = { ...DEFAULT_VIEW };
+	maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 400);
 	renderMandelbrot();
 });
 
-// Initial rendering
 renderMandelbrot();
