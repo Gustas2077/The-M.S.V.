@@ -1,11 +1,53 @@
+﻿type ViewBounds = {
+	minX: number;
+	maxX: number;
+	minY: number;
+	maxY: number;
+};
+
+type WorkerResponse = {
+	renderId: number;
+	yStart: number;
+	values: ArrayBuffer;
+	histogram: ArrayBuffer;
+};
+
 const canvas = document.querySelector("[data-canvas]") as HTMLCanvasElement | null;
-const xValue = document.querySelector("[data-x]") as HTMLInputElement | null;
-const yValue = document.querySelector("[data-y]") as HTMLInputElement | null;
+const xInput = document.querySelector("[data-x]") as HTMLInputElement | null;
+const yInput = document.querySelector("[data-y]") as HTMLInputElement | null;
 const iterationsInput = document.querySelector("[data-iterations]") as HTMLInputElement | null;
 const resetButton = document.querySelector("[data-reset-button]") as HTMLButtonElement | null;
+const renderMsEl = document.querySelector("[data-render-ms]") as HTMLElement | null;
+const workerCountEl = document.querySelector("[data-worker-count]") as HTMLElement | null;
+const renderStatusEl = document.querySelector("[data-render-status]") as HTMLElement | null;
+const canvasXEl = document.querySelector("[data-canvas-x]") as HTMLElement | null;
+const canvasYEl = document.querySelector("[data-canvas-y]") as HTMLElement | null;
+const realXEl = document.querySelector("[data-real-x]") as HTMLElement | null;
+const imagYEl = document.querySelector("[data-imag-y]") as HTMLElement | null;
+const minXEl = document.querySelector("[data-min-x]") as HTMLElement | null;
+const maxXEl = document.querySelector("[data-max-x]") as HTMLElement | null;
+const minYEl = document.querySelector("[data-min-y]") as HTMLElement | null;
+const maxYEl = document.querySelector("[data-max-y]") as HTMLElement | null;
 
-if (!canvas || !xValue || !yValue || !iterationsInput || !resetButton) {
-	throw new Error("Required UI elements are missing.");
+if (
+	!canvas ||
+	!xInput ||
+	!yInput ||
+	!iterationsInput ||
+	!resetButton ||
+	!renderMsEl ||
+	!workerCountEl ||
+	!renderStatusEl ||
+	!canvasXEl ||
+	!canvasYEl ||
+	!realXEl ||
+	!imagYEl ||
+	!minXEl ||
+	!maxXEl ||
+	!minYEl ||
+	!maxYEl
+) {
+	throw new Error("Missing required DOM elements.");
 }
 
 const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
@@ -13,20 +55,22 @@ if (!ctx) {
 	throw new Error("2D canvas context unavailable.");
 }
 
-const DEFAULT_VIEW = {
-	minX: -2,
-	maxX: 1,
-	minY: -1,
-	maxY: 1,
-};
-
+const DEFAULT_VIEW: ViewBounds = { minX: -2, maxX: 1, minY: -1, maxY: 1 };
 const ZOOM_IN_FACTOR = 0.5;
 const ZOOM_OUT_FACTOR = 2;
 const PALETTE = buildPalette(8192);
 
-let maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 400);
 let view = { ...DEFAULT_VIEW };
+let maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 400);
 let renderToken = 0;
+
+const workerCount = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1 || 1));
+workerCountEl.textContent = String(workerCount);
+
+const workers = Array.from(
+	{ length: workerCount },
+	() => new Worker(new URL("./render.worker.ts", import.meta.url), { type: "module" })
+);
 
 function buildPalette(size: number): Uint8Array {
 	const lut = new Uint8Array(size * 3);
@@ -46,30 +90,6 @@ function buildPalette(size: number): Uint8Array {
 	return lut;
 }
 
-function escapeTimeSmooth(re: number, im: number): number {
-	let zr = 0;
-	let zi = 0;
-	let zr2 = 0;
-	let zi2 = 0;
-	let n = 0;
-
-	while (zr2 + zi2 <= 4 && n < maxIter) {
-		zi = 2 * zr * zi + im;
-		zr = zr2 - zi2 + re;
-		zr2 = zr * zr;
-		zi2 = zi * zi;
-		n += 1;
-	}
-
-	if (n === maxIter) {
-		return maxIter;
-	}
-
-	const magnitude2 = zr2 + zi2;
-	const smooth = n + 1 - Math.log2(Math.log2(magnitude2));
-	return Number.isFinite(smooth) ? smooth : n;
-}
-
 function screenToComplex(canvasX: number, canvasY: number) {
 	return {
 		re: view.minX + (canvasX / canvas.width) * (view.maxX - view.minX),
@@ -77,42 +97,23 @@ function screenToComplex(canvasX: number, canvasY: number) {
 	};
 }
 
-function updateUIForCenter() {
+function updateBoundsText() {
+	minXEl.textContent = view.minX.toFixed(10);
+	maxXEl.textContent = view.maxX.toFixed(10);
+	minYEl.textContent = view.minY.toFixed(10);
+	maxYEl.textContent = view.maxY.toFixed(10);
+
 	const centerX = (view.minX + view.maxX) * 0.5;
 	const centerY = (view.minY + view.maxY) * 0.5;
-	xValue.value = centerX.toFixed(8);
-	yValue.value = centerY.toFixed(8);
-	iterationsInput.value = String(maxIter);
+	xInput.value = centerX.toFixed(10);
+	yInput.value = centerY.toFixed(10);
 }
 
-function renderMandelbrot() {
-	const token = ++renderToken;
-	const width = canvas.width;
-	const height = canvas.height;
-
-	const values = new Float32Array(width * height);
-	const histogram = new Uint32Array(maxIter + 1);
-	const scaleX = (view.maxX - view.minX) / width;
-	const scaleY = (view.maxY - view.minY) / height;
-
-	let idx = 0;
-	for (let y = 0; y < height; y++) {
-		const im = view.minY + y * scaleY;
-		for (let x = 0; x < width; x++) {
-			const re = view.minX + x * scaleX;
-			const m = escapeTimeSmooth(re, im);
-			values[idx++] = m;
-			if (m < maxIter) {
-				histogram[m | 0] += 1;
-			}
-		}
-	}
-
-	if (token !== renderToken) {
-		return;
-	}
-
+function paint(values: Float32Array, histogram: Uint32Array) {
+	const image = ctx.createImageData(canvas.width, canvas.height);
+	const pixels = image.data;
 	const cdf = new Float32Array(maxIter + 1);
+
 	let total = 0;
 	for (let i = 0; i < maxIter; i++) {
 		total += histogram[i];
@@ -127,10 +128,7 @@ function renderMandelbrot() {
 		cdf[maxIter] = 1;
 	}
 
-	const image = ctx.createImageData(width, height);
-	const pixels = image.data;
 	const paletteLen = PALETTE.length / 3 - 1;
-
 	for (let i = 0, p = 0; i < values.length; i++, p += 4) {
 		const m = values[i];
 		if (m >= maxIter) {
@@ -155,16 +153,63 @@ function renderMandelbrot() {
 	}
 
 	ctx.putImageData(image, 0, 0);
-	updateUIForCenter();
 }
 
-function calculateCanvasClick(event: MouseEvent) {
-	const rect = canvas.getBoundingClientRect();
-	const clickX = event.clientX - rect.left;
-	const clickY = event.clientY - rect.top;
-	const canvasX = (clickX / rect.width) * canvas.width;
-	const canvasY = (clickY / rect.height) * canvas.height;
-	return { x: canvasX, y: canvasY };
+function renderMandelbrot() {
+	const token = ++renderToken;
+	const start = performance.now();
+	renderStatusEl.textContent = "rendering";
+	updateBoundsText();
+
+	const width = canvas.width;
+	const height = canvas.height;
+	const values = new Float32Array(width * height);
+	const histogram = new Uint32Array(maxIter + 1);
+
+	const rowsPerWorker = Math.ceil(height / workers.length);
+	let completed = 0;
+	let activeWorkers = 0;
+
+	workers.forEach((worker, i) => {
+		const yStart = i * rowsPerWorker;
+		const yEnd = Math.min(height, yStart + rowsPerWorker);
+		if (yStart >= yEnd) {
+			completed += 1;
+			return;
+		}
+
+		activeWorkers += 1;
+		worker.onmessage = event => {
+			const data = event.data as WorkerResponse;
+			if (data.renderId !== token) {
+				return;
+			}
+
+			values.set(new Float32Array(data.values), data.yStart * width);
+			const partialHistogram = new Uint32Array(data.histogram);
+			for (let h = 0; h < partialHistogram.length; h++) {
+				histogram[h] += partialHistogram[h];
+			}
+
+			completed += 1;
+			if (completed === workers.length) {
+				paint(values, histogram);
+				renderMsEl.textContent = (performance.now() - start).toFixed(1);
+				renderStatusEl.textContent = "done";
+				workerCountEl.textContent = String(activeWorkers);
+			}
+		};
+
+		worker.postMessage({
+			renderId: token,
+			width,
+			height,
+			yStart,
+			yEnd,
+			maxIter,
+			view,
+		});
+	});
 }
 
 function zoomAt(canvasX: number, canvasY: number, factor: number) {
@@ -178,39 +223,59 @@ function zoomAt(canvasX: number, canvasY: number, factor: number) {
 	view.maxY = view.minY + height;
 }
 
-iterationsInput.addEventListener("change", () => {
-	maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 1);
-	renderMandelbrot();
+function getCanvasPoint(event: MouseEvent) {
+	const rect = canvas.getBoundingClientRect();
+	const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+	const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+	return {
+		x: Math.max(0, Math.min(canvas.width - 1, x)),
+		y: Math.max(0, Math.min(canvas.height - 1, y)),
+	};
+}
+
+canvas.addEventListener("mousemove", event => {
+	const p = getCanvasPoint(event);
+	const c = screenToComplex(p.x, p.y);
+
+	canvasXEl.textContent = p.x.toFixed(0);
+	canvasYEl.textContent = p.y.toFixed(0);
+	realXEl.textContent = c.re.toFixed(10);
+	imagYEl.textContent = c.im.toFixed(10);
 });
 
 canvas.addEventListener("click", event => {
-	const click = calculateCanvasClick(event);
-	zoomAt(click.x, click.y, ZOOM_IN_FACTOR);
+	const p = getCanvasPoint(event);
+	zoomAt(p.x, p.y, ZOOM_IN_FACTOR);
 	renderMandelbrot();
 });
 
 canvas.addEventListener("contextmenu", event => {
 	event.preventDefault();
-	const click = calculateCanvasClick(event);
-	zoomAt(click.x, click.y, ZOOM_OUT_FACTOR);
+	const p = getCanvasPoint(event);
+	zoomAt(p.x, p.y, ZOOM_OUT_FACTOR);
 	renderMandelbrot();
 });
 
-xValue.addEventListener("change", () => {
-	const nextX = Number.parseFloat(xValue.value);
-	if (!Number.isFinite(nextX)) return;
+xInput.addEventListener("change", () => {
+	const centerX = Number.parseFloat(xInput.value);
+	if (!Number.isFinite(centerX)) return;
 	const halfWidth = (view.maxX - view.minX) * 0.5;
-	view.minX = nextX - halfWidth;
-	view.maxX = nextX + halfWidth;
+	view.minX = centerX - halfWidth;
+	view.maxX = centerX + halfWidth;
 	renderMandelbrot();
 });
 
-yValue.addEventListener("change", () => {
-	const nextY = Number.parseFloat(yValue.value);
-	if (!Number.isFinite(nextY)) return;
+yInput.addEventListener("change", () => {
+	const centerY = Number.parseFloat(yInput.value);
+	if (!Number.isFinite(centerY)) return;
 	const halfHeight = (view.maxY - view.minY) * 0.5;
-	view.minY = nextY - halfHeight;
-	view.maxY = nextY + halfHeight;
+	view.minY = centerY - halfHeight;
+	view.maxY = centerY + halfHeight;
+	renderMandelbrot();
+});
+
+iterationsInput.addEventListener("change", () => {
+	maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 1);
 	renderMandelbrot();
 });
 
@@ -218,6 +283,10 @@ resetButton.addEventListener("click", () => {
 	view = { ...DEFAULT_VIEW };
 	maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 400);
 	renderMandelbrot();
+});
+
+window.addEventListener("beforeunload", () => {
+	workers.forEach(worker => worker.terminate());
 });
 
 renderMandelbrot();
