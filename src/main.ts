@@ -9,7 +9,6 @@ type WorkerResponse = {
 	renderId: number;
 	yStart: number;
 	values: ArrayBuffer;
-	histogram: ArrayBuffer;
 };
 
 function getRequiredElement<T extends Element>(selector: string): T {
@@ -32,6 +31,11 @@ const canvas = getRequiredElement<HTMLCanvasElement>("[data-canvas]");
 const xInput = getRequiredElement<HTMLInputElement>("[data-x]");
 const yInput = getRequiredElement<HTMLInputElement>("[data-y]");
 const iterationsInput = getRequiredElement<HTMLInputElement>("[data-iterations]");
+const iterDoubleButton = getRequiredElement<HTMLButtonElement>("[data-iter-double]");
+const iterHalfButton = getRequiredElement<HTMLButtonElement>("[data-iter-half]");
+const previewEnabledInput = getRequiredElement<HTMLInputElement>("[data-preview-enabled]");
+const previewScaleSelect = getRequiredElement<HTMLSelectElement>("[data-preview-scale]");
+const paletteSelect = getRequiredElement<HTMLSelectElement>("[data-palette]");
 const resetButton = getRequiredElement<HTMLButtonElement>("[data-reset-button]");
 const renderMsEl = getRequiredElement<HTMLElement>("[data-render-ms]");
 const workerCountEl = getRequiredElement<HTMLElement>("[data-worker-count]");
@@ -47,10 +51,20 @@ const maxYEl = getRequiredElement<HTMLElement>("[data-max-y]");
 
 const ctx = getRequired2DContext(canvas);
 
-const DEFAULT_VIEW: ViewBounds = { minX: -2, maxX: 1, minY: -1, maxY: 1 };
+const DEFAULT_CENTER = { x: -0.5, y: 0 };
+const DEFAULT_HALF_HEIGHT = 1.6;
+const DEFAULT_VIEW: ViewBounds = { minX: -2.1, maxX: 1.1, minY: -1.6, maxY: 1.6 };
 const ZOOM_IN_FACTOR = 0.5;
 const ZOOM_OUT_FACTOR = 2;
-const PALETTE = buildPalette(8192);
+const FULL_RENDER_DELAY_MS = 140;
+const PREVIEW_ITER_SCALE = 0.35;
+const PREVIEW_SCALE_DEFAULT = 0.35;
+const PALETTE_SIZE = 16384;
+
+let currentPaletteName = paletteSelect.value;
+let currentPalette = buildPalette(PALETTE_SIZE, currentPaletteName);
+let previewEnabled = previewEnabledInput.checked;
+let previewScale = Math.max(0.2, Math.min(0.9, Number.parseFloat(previewScaleSelect.value) || PREVIEW_SCALE_DEFAULT));
 
 let view = { ...DEFAULT_VIEW };
 let maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 400);
@@ -63,16 +77,31 @@ let dragStartView: ViewBounds = { ...DEFAULT_VIEW };
 let dragPreviewCanvas: HTMLCanvasElement | null = null;
 let wheelZoomTimer: number | null = null;
 let wheelZoomAccum = 0;
-let wheelZoomQueued = false;
 let isTouchPanning = false;
 let touchStartPoint = { x: 0, y: 0 };
 let touchCurrentPoint = { x: 0, y: 0 };
 let touchStartView: ViewBounds = { ...DEFAULT_VIEW };
+let isRendering = false;
+let lowResCanvas: HTMLCanvasElement | null = null;
+let previewFrameQueued = false;
+let activeRenderIter = maxIter;
 
 function resizeCanvasToWindow() {
 	const dpr = window.devicePixelRatio || 1;
 	canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
 	canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
+}
+
+function makeDefaultView(): ViewBounds {
+	const aspect = canvas.width / canvas.height;
+	const halfHeight = DEFAULT_HALF_HEIGHT;
+	const halfWidth = halfHeight * aspect;
+	return {
+		minX: DEFAULT_CENTER.x - halfWidth,
+		maxX: DEFAULT_CENTER.x + halfWidth,
+		minY: DEFAULT_CENTER.y - halfHeight,
+		maxY: DEFAULT_CENTER.y + halfHeight,
+	};
 }
 
 const workerCount = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1 || 1));
@@ -83,20 +112,88 @@ const workers = Array.from(
 	() => new Worker(new URL("./render.worker.ts", import.meta.url), { type: "module" })
 );
 
-function buildPalette(size: number): Uint8Array {
+function clamp01(value: number) {
+	return Math.min(1, Math.max(0, value));
+}
+
+function sinebowColor(x: number): [number, number, number] {
+	const t = clamp01(x);
+	const r = Math.sin(Math.PI * (t + 0 / 3)) ** 2;
+	const g = Math.sin(Math.PI * (t + 1 / 3)) ** 2;
+	const b = Math.sin(Math.PI * (t + 2 / 3)) ** 2;
+	return [r, g, b];
+}
+
+function turboColor(x: number): [number, number, number] {
+	const t = clamp01(x);
+	const t2 = t * t;
+	const t3 = t2 * t;
+	const t4 = t2 * t2;
+	const t5 = t4 * t;
+
+	const r =
+		0.13572138 +
+		4.6153926 * t +
+		-42.66032258 * t2 +
+		132.13108234 * t3 +
+		-152.94239396 * t4 +
+		59.28637943 * t5;
+	const g =
+		0.09140261 +
+		2.19418839 * t +
+		4.84296658 * t2 +
+		-14.18503333 * t3 +
+		4.27729857 * t4 +
+		2.82956604 * t5;
+	const b =
+		0.1066733 +
+		12.64194608 * t +
+		-60.58204836 * t2 +
+		110.36276771 * t3 +
+		-89.90310912 * t4 +
+		27.34824973 * t5;
+
+	return [clamp01(r), clamp01(g), clamp01(b)];
+}
+
+function emberColor(x: number): [number, number, number] {
+	const t = clamp01(x);
+	const r = Math.min(1, 1.4 * t + 0.1);
+	const g = Math.min(1, Math.pow(t, 1.4) * 0.9);
+	const b = Math.min(1, Math.pow(t, 2.4) * 0.6);
+	return [r, g, b];
+}
+
+function noirColor(x: number): [number, number, number] {
+	const t = clamp01(x);
+	const v = Math.pow(t, 0.7);
+	return [v, v, v];
+}
+
+function buildPalette(size: number, mode: string): Uint8Array {
 	const lut = new Uint8Array(size * 3);
 	for (let i = 0; i < size; i++) {
 		const t = i / (size - 1);
-		const phase = Math.PI * 2 * (0.5 + 1.25 * t);
-		const sat = 0.82 + 0.18 * Math.sin(Math.PI * 2 * t);
-		const val = 0.15 + 0.85 * t;
-		const r = 0.5 + 0.5 * Math.sin(phase);
-		const g = 0.5 + 0.5 * Math.sin(phase + 2.0943951023931953);
-		const b = 0.5 + 0.5 * Math.sin(phase + 4.1887902047863905);
-
-		lut[i * 3] = Math.min(255, (255 * val * (r * sat + (1 - sat))) | 0);
-		lut[i * 3 + 1] = Math.min(255, (255 * val * (g * sat + (1 - sat))) | 0);
-		lut[i * 3 + 2] = Math.min(255, (255 * val * (b * sat + (1 - sat))) | 0);
+		let rgb: [number, number, number];
+		switch (mode) {
+			case "sinebow":
+				rgb = sinebowColor(t);
+				break;
+			case "ember":
+				rgb = emberColor(t);
+				break;
+			case "noir":
+				rgb = noirColor(t);
+				break;
+			case "turbo":
+			default:
+				rgb = turboColor(t);
+				break;
+		}
+		const [r, g, b] = rgb;
+		lut[i * 3] = (r * 255) | 0;
+		lut[i * 3 + 1] = (g * 255) | 0;
+		lut[i * 3 + 2] = (b * 255) | 0;
 	}
 	return lut;
 }
@@ -120,29 +217,14 @@ function updateBoundsText() {
 	yInput.value = centerY.toFixed(10);
 }
 
-function paint(values: Float32Array, histogram: Uint32Array) {
-	const image = ctx.createImageData(canvas.width, canvas.height);
+function paint(values: Float32Array, renderWidth: number, renderHeight: number) {
+	const image = ctx.createImageData(renderWidth, renderHeight);
 	const pixels = image.data;
-	const cdf = new Float32Array(maxIter + 1);
+	const paletteLen = currentPalette.length / 3 - 1;
 
-	let total = 0;
-	for (let i = 0; i < maxIter; i++) {
-		total += histogram[i];
-	}
-
-	if (total > 0) {
-		let running = 0;
-		for (let i = 0; i < maxIter; i++) {
-			running += histogram[i];
-			cdf[i] = running / total;
-		}
-		cdf[maxIter] = 1;
-	}
-
-	const paletteLen = PALETTE.length / 3 - 1;
 	for (let i = 0, p = 0; i < values.length; i++, p += 4) {
 		const m = values[i];
-		if (m >= maxIter) {
+		if (m >= activeRenderIter) {
 			pixels[p] = 0;
 			pixels[p + 1] = 0;
 			pixels[p + 2] = 0;
@@ -150,42 +232,73 @@ function paint(values: Float32Array, histogram: Uint32Array) {
 			continue;
 		}
 
-		const floorIdx = m | 0;
-		const frac = m - floorIdx;
-		const c0 = cdf[floorIdx] || 0;
-		const c1 = cdf[Math.min(maxIter, floorIdx + 1)] || c0;
-		const t = c0 + (c1 - c0) * frac;
-		const lutIdx = Math.min(paletteLen, (t * paletteLen) | 0) * 3;
+		const tRaw = m / activeRenderIter;
+		const t = tRaw * tRaw * (3 - 2 * tRaw);
+		const pos = t * paletteLen;
+		const idx0 = Math.floor(pos);
+		const idx1 = Math.min(paletteLen, idx0 + 1);
+		const mix = pos - idx0;
+		const base0 = idx0 * 3;
+		const base1 = idx1 * 3;
 
-		pixels[p] = PALETTE[lutIdx];
-		pixels[p + 1] = PALETTE[lutIdx + 1];
-		pixels[p + 2] = PALETTE[lutIdx + 2];
+		const r0 = currentPalette[base0];
+		const g0 = currentPalette[base0 + 1];
+		const b0 = currentPalette[base0 + 2];
+		const r1 = currentPalette[base1];
+		const g1 = currentPalette[base1 + 1];
+		const b1 = currentPalette[base1 + 2];
+
+		pixels[p] = (r0 + (r1 - r0) * mix) | 0;
+		pixels[p + 1] = (g0 + (g1 - g0) * mix) | 0;
+		pixels[p + 2] = (b0 + (b1 - b0) * mix) | 0;
 		pixels[p + 3] = 255;
 	}
 
-	ctx.putImageData(image, 0, 0);
+	if (renderWidth === canvas.width && renderHeight === canvas.height) {
+		ctx.putImageData(image, 0, 0);
+		return;
+	}
+
+	if (!lowResCanvas) {
+		lowResCanvas = document.createElement("canvas");
+	}
+	lowResCanvas.width = renderWidth;
+	lowResCanvas.height = renderHeight;
+	const lowCtx = lowResCanvas.getContext("2d");
+	if (!lowCtx) {
+		ctx.putImageData(image, 0, 0);
+		return;
+	}
+	lowCtx.putImageData(image, 0, 0);
+	ctx.save();
+	ctx.imageSmoothingEnabled = true;
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	ctx.drawImage(lowResCanvas, 0, 0, canvas.width, canvas.height);
+	ctx.restore();
 }
 
-function renderMandelbrot() {
+function renderMandelbrot(scale = 1, iterScale = 1) {
 	const token = ++renderToken;
 	const start = performance.now();
 	renderStatusEl.textContent = "rendering";
+	isRendering = true;
 	updateBoundsText();
 
-	const width = canvas.width;
-	const height = canvas.height;
+	const width = Math.max(1, Math.floor(canvas.width * scale));
+	const height = Math.max(1, Math.floor(canvas.height * scale));
 	const values = new Float32Array(width * height);
-	const histogram = new Uint32Array(maxIter + 1);
+	const iterForRender = Math.max(10, Math.floor(maxIter * iterScale));
+	activeRenderIter = iterForRender;
 
 	const rowsPerWorker = Math.ceil(height / workers.length);
-	let completed = 0;
+	let completedWorkers = 0;
 	let activeWorkers = 0;
 
 	workers.forEach((worker, i) => {
 		const yStart = i * rowsPerWorker;
 		const yEnd = Math.min(height, yStart + rowsPerWorker);
 		if (yStart >= yEnd) {
-			completed += 1;
+			completedWorkers += 1;
 			return;
 		}
 
@@ -196,18 +309,16 @@ function renderMandelbrot() {
 				return;
 			}
 
-			values.set(new Float32Array(data.values), data.yStart * width);
-			const partialHistogram = new Uint32Array(data.histogram);
-			for (let h = 0; h < partialHistogram.length; h++) {
-				histogram[h] += partialHistogram[h];
-			}
+			const rowValues = new Float32Array(data.values);
+			values.set(rowValues, data.yStart * width);
 
-			completed += 1;
-			if (completed === workers.length) {
-				paint(values, histogram);
+			completedWorkers += 1;
+			if (completedWorkers === workers.length) {
+				paint(values, width, height);
 				renderMsEl.textContent = (performance.now() - start).toFixed(1);
 				renderStatusEl.textContent = "done";
 				workerCountEl.textContent = String(activeWorkers);
+				isRendering = false;
 			}
 		};
 
@@ -217,7 +328,7 @@ function renderMandelbrot() {
 			height,
 			yStart,
 			yEnd,
-			maxIter,
+			maxIter: iterForRender,
 			view,
 		});
 	});
@@ -244,14 +355,31 @@ function getCanvasPointFromClient(clientX: number, clientY: number) {
 	};
 }
 
-function scheduleWheelRender() {
-	if (wheelZoomQueued) {
+function renderPreviewThenFull() {
+	if (previewEnabled) {
+		renderMandelbrot(previewScale, PREVIEW_ITER_SCALE);
 		return;
 	}
-	wheelZoomQueued = true;
-	requestAnimationFrame(() => {
-		wheelZoomQueued = false;
+
+	renderMandelbrot();
+}
+
+function renderWithMode() {
+	if (previewEnabled) {
+		renderMandelbrot(previewScale, PREVIEW_ITER_SCALE);
+	} else {
 		renderMandelbrot();
+	}
+}
+
+function queuePreviewFrame() {
+	if (!previewEnabled || previewFrameQueued) {
+		return;
+	}
+	previewFrameQueued = true;
+	requestAnimationFrame(() => {
+		previewFrameQueued = false;
+		renderMandelbrot(previewScale, PREVIEW_ITER_SCALE);
 	});
 }
 
@@ -268,6 +396,9 @@ canvas.addEventListener("mousemove", event => {
 canvas.addEventListener(
 	"wheel",
 	event => {
+		if (isRendering) {
+			return;
+		}
 		event.preventDefault();
 		const p = getCanvasPointFromClient(event.clientX, event.clientY);
 		const delta = Math.max(-120, Math.min(120, event.deltaY));
@@ -277,21 +408,23 @@ canvas.addEventListener(
 		zoomAt(p.x, p.y, zoomFactor);
 		wheelZoomAccum = 0;
 
-		scheduleWheelRender();
+		renderPreviewThenFull();
 
 		if (wheelZoomTimer !== null) {
 			window.clearTimeout(wheelZoomTimer);
 		}
 		wheelZoomTimer = window.setTimeout(() => {
-			renderMandelbrot();
 			wheelZoomTimer = null;
-		}, 90);
+		}, FULL_RENDER_DELAY_MS);
 	},
 	{ passive: false }
 );
 
 canvas.addEventListener("mousedown", event => {
 	if (event.button !== 0) {
+		return;
+	}
+	if (isRendering) {
 		return;
 	}
 
@@ -314,6 +447,9 @@ canvas.addEventListener("mousedown", event => {
 
 canvas.addEventListener("pointerdown", event => {
 	if (event.pointerType !== "touch") {
+		return;
+	}
+	if (isRendering) {
 		return;
 	}
 	event.preventDefault();
@@ -353,6 +489,8 @@ canvas.addEventListener("pointermove", event => {
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		ctx.drawImage(dragPreviewCanvas, dx, dy);
 	}
+
+	queuePreviewFrame();
 });
 
 canvas.addEventListener("pointerup", event => {
@@ -369,7 +507,7 @@ canvas.addEventListener("pointerup", event => {
 		view.maxX = touchStartView.maxX - dx * scaleX;
 		view.minY = touchStartView.minY - dy * scaleY;
 		view.maxY = touchStartView.maxY - dy * scaleY;
-		renderMandelbrot();
+		renderPreviewThenFull();
 	}
 	isTouchPanning = false;
 	dragPreviewCanvas = null;
@@ -394,6 +532,8 @@ window.addEventListener("mousemove", event => {
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		ctx.drawImage(dragPreviewCanvas, dx, dy);
 	}
+
+	queuePreviewFrame();
 });
 
 window.addEventListener("mouseup", event => {
@@ -411,7 +551,7 @@ window.addEventListener("mouseup", event => {
 		view.maxX = dragStartView.maxX - dx * scaleX;
 		view.minY = dragStartView.minY - dy * scaleY;
 		view.maxY = dragStartView.maxY - dy * scaleY;
-		renderMandelbrot();
+		renderPreviewThenFull();
 	}
 
 	isDragging = false;
@@ -424,17 +564,41 @@ canvas.addEventListener("click", event => {
 		dragMoved = false;
 		return;
 	}
+	if (isRendering) {
+		return;
+	}
 
 	const p = getCanvasPointFromClient(event.clientX, event.clientY);
 	zoomAt(p.x, p.y, ZOOM_IN_FACTOR);
-	renderMandelbrot();
+	renderWithMode();
 });
 
 canvas.addEventListener("contextmenu", event => {
 	event.preventDefault();
+	if (isRendering) {
+		return;
+	}
 	const p = getCanvasPointFromClient(event.clientX, event.clientY);
 	zoomAt(p.x, p.y, ZOOM_OUT_FACTOR);
-	renderMandelbrot();
+	renderWithMode();
+});
+
+iterDoubleButton.addEventListener("click", () => {
+	if (isRendering) {
+		return;
+	}
+	maxIter = Math.min(10000, Math.max(1, Math.floor(maxIter * 2)));
+	iterationsInput.value = String(maxIter);
+	renderPreviewThenFull();
+});
+
+iterHalfButton.addEventListener("click", () => {
+	if (isRendering) {
+		return;
+	}
+	maxIter = Math.max(1, Math.floor(maxIter / 2));
+	iterationsInput.value = String(maxIter);
+	renderPreviewThenFull();
 });
 
 xInput.addEventListener("change", () => {
@@ -443,8 +607,9 @@ xInput.addEventListener("change", () => {
 	const halfWidth = (view.maxX - view.minX) * 0.5;
 	view.minX = centerX - halfWidth;
 	view.maxX = centerX + halfWidth;
-	renderMandelbrot();
+	renderWithMode();
 });
+
 
 yInput.addEventListener("change", () => {
 	const centerY = Number.parseFloat(yInput.value);
@@ -452,18 +617,38 @@ yInput.addEventListener("change", () => {
 	const halfHeight = (view.maxY - view.minY) * 0.5;
 	view.minY = centerY - halfHeight;
 	view.maxY = centerY + halfHeight;
-	renderMandelbrot();
+	renderWithMode();
 });
 
 iterationsInput.addEventListener("change", () => {
 	maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 1);
-	renderMandelbrot();
+	renderWithMode();
+});
+
+previewEnabledInput.addEventListener("change", () => {
+	previewEnabled = previewEnabledInput.checked;
+	renderWithMode();
+});
+
+previewScaleSelect.addEventListener("change", () => {
+	const next = Number.parseFloat(previewScaleSelect.value);
+	previewScale = Math.max(0.2, Math.min(0.9, Number.isFinite(next) ? next : PREVIEW_SCALE_DEFAULT));
+	renderWithMode();
+});
+
+paletteSelect.addEventListener("change", () => {
+	if (isRendering) {
+		return;
+	}
+	currentPaletteName = paletteSelect.value;
+	currentPalette = buildPalette(PALETTE_SIZE, currentPaletteName);
+	renderWithMode();
 });
 
 resetButton.addEventListener("click", () => {
-	view = { ...DEFAULT_VIEW };
+	view = makeDefaultView();
 	maxIter = Math.max(1, Number.parseInt(iterationsInput.value, 10) || 400);
-	renderMandelbrot();
+	renderWithMode();
 });
 
 window.addEventListener("beforeunload", () => {
@@ -472,8 +657,10 @@ window.addEventListener("beforeunload", () => {
 
 window.addEventListener("resize", () => {
 	resizeCanvasToWindow();
-	renderMandelbrot();
+	view = makeDefaultView();
+	renderWithMode();
 });
 
 resizeCanvasToWindow();
-renderMandelbrot();
+view = makeDefaultView();
+renderWithMode();

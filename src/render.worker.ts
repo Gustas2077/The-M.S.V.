@@ -1,4 +1,4 @@
-type RenderJob = {
+﻿type RenderJob = {
 	renderId: number;
 	width: number;
 	height: number;
@@ -25,7 +25,6 @@ workerScope.onmessage = (event: MessageEvent<RenderJob>) => {
 
 	const rowCount = yEnd - yStart;
 	const values = new Float32Array(width * rowCount);
-	const histogram = new Uint32Array(maxIter + 1);
 
 	const scaleX = (view.maxX - view.minX) / width;
 	const scaleY = (view.maxY - view.minY) / height;
@@ -56,17 +55,13 @@ workerScope.onmessage = (event: MessageEvent<RenderJob>) => {
 				if (!Number.isFinite(smooth)) {
 					smooth = n;
 				}
-				histogram[n] += 1;
 			}
 
 			values[idx++] = smooth;
 		}
 	}
 
-	workerScope.postMessage({ renderId, yStart, values: values.buffer, histogram: histogram.buffer }, [
-		values.buffer,
-		histogram.buffer,
-	]);
+	workerScope.postMessage({ renderId, yStart, values: values.buffer }, [values.buffer]);
 };
 
 export {};

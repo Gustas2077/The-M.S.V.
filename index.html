@@ -35,6 +35,35 @@
 							<span>Iterations</span>
 							<input type="number" value="400" min="1" step="50" data-iterations />
 						</label>
+						<div class="control-pair">
+							<button type="button" data-iter-double>×2</button>
+							<button type="button" data-iter-half>÷2</button>
+						</div>
+						<label>
+							<span>Preview</span>
+							<div class="control-inline">
+								<input type="checkbox" checked data-preview-enabled />
+								<span>Low-res mode</span>
+							</div>
+						</label>
+						<label>
+							<span>Preview Scale</span>
+							<select data-preview-scale>
+								<option value="0.35" selected>0.35x</option>
+								<option value="0.5">0.5x</option>
+								<option value="0.7">0.7x</option>
+								<option value="0.85">0.85x</option>
+							</select>
+						</label>
+						<label>
+							<span>Palette</span>
+							<select data-palette>
+								<option value="turbo" selected>Turbo</option>
+								<option value="sinebow">Sinebow</option>
+								<option value="noir">Noir</option>
+								<option value="ember">Ember</option>
+							</select>
+						</label>
 						<button type="button" data-reset-button>Reset View</button>
 					</div>
 				</div>

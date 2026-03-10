@@ -113,6 +113,55 @@ canvas {
 	color: #dce6f3;
 }
 
+.controls select {
+	width: 100%;
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid #334157;
+	background: rgba(23, 31, 43, 0.8);
+	color: #dce6f3;
+}
+
+.control-pair {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+	align-items: end;
+}
+
+.control-pair button {
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid #334157;
+	background: rgba(23, 31, 43, 0.8);
+	color: #dce6f3;
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.control-pair button:hover {
+	background: rgba(31, 42, 57, 0.9);
+}
+
+.control-inline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: 1px solid #334157;
+	background: rgba(23, 31, 43, 0.8);
+	color: #dce6f3;
+	font-size: 13px;
+}
+
+.control-inline input[type="checkbox"] {
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	accent-color: #7c9dff;
+}
+
 .controls button {
 	align-self: end;
 	cursor: pointer;
