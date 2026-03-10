@@ -91,6 +91,42 @@
 				</div>
 
 				<div class="panel-section">
+					<h2>Screenshot</h2>
+					<div class="controls">
+						<label>
+							<span>Resolution</span>
+							<select data-res-select>
+								<option value="current" selected>Current</option>
+								<option value="480p">480p</option>
+								<option value="720p">720p</option>
+								<option value="1080p">1080p</option>
+								<option value="1440p">1440p</option>
+								<option value="2k">2K</option>
+								<option value="4k">4K</option>
+								<option value="8k">8K</option>
+								<option value="custom">Custom</option>
+							</select>
+						</label>
+						<label>
+							<span>Width</span>
+							<input type="number" min="64" max="10000" step="1" data-res-width />
+						</label>
+						<label>
+							<span>Height</span>
+							<input type="number" min="64" max="10000" step="1" data-res-height />
+						</label>
+						<label>
+							<span>File Size</span>
+							<div class="control-inline">
+								<input type="checkbox" data-reduce-size />
+								<span>Reduce size (slower)</span>
+							</div>
+						</label>
+						<button type="button" data-screenshot>Save Screenshot</button>
+					</div>
+				</div>
+
+				<div class="panel-section">
 					<h2>Render Stats</h2>
 					<ul>
 						<li><strong>Render time:</strong> <span data-render-ms>0</span> ms</li>

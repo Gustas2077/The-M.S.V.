@@ -41,6 +41,11 @@ const paletteSelect = getRequiredElement<HTMLSelectElement>("[data-palette]");
 const resetButton = getRequiredElement<HTMLButtonElement>("[data-reset-button]");
 const introOverlay = getRequiredElement<HTMLElement>("[data-intro]");
 const introStartButton = getRequiredElement<HTMLButtonElement>("[data-intro-start]");
+const resSelect = getRequiredElement<HTMLSelectElement>("[data-res-select]");
+const resWidthInput = getRequiredElement<HTMLInputElement>("[data-res-width]");
+const resHeightInput = getRequiredElement<HTMLInputElement>("[data-res-height]");
+const reduceSizeInput = getRequiredElement<HTMLInputElement>("[data-reduce-size]");
+const screenshotButton = getRequiredElement<HTMLButtonElement>("[data-screenshot]");
 const renderMsEl = getRequiredElement<HTMLElement>("[data-render-ms]");
 const workerCountEl = getRequiredElement<HTMLElement>("[data-worker-count]");
 const renderStatusEl = getRequiredElement<HTMLElement>("[data-render-status]");
@@ -344,6 +349,135 @@ function renderMandelbrot(scale = 1, iterScale = 1) {
 	});
 }
 
+function paintToContext(
+	values: Float32Array,
+	renderWidth: number,
+	renderHeight: number,
+	targetCtx: CanvasRenderingContext2D,
+	iterForRender: number
+) {
+	const image = targetCtx.createImageData(renderWidth, renderHeight);
+	const pixels = image.data;
+	const paletteLen = currentPalette.length / 3 - 1;
+
+	for (let i = 0, p = 0; i < values.length; i++, p += 4) {
+		const m = values[i];
+		if (m >= iterForRender) {
+			pixels[p] = 0;
+			pixels[p + 1] = 0;
+			pixels[p + 2] = 0;
+			pixels[p + 3] = 255;
+			continue;
+		}
+
+		const tRaw = m / iterForRender;
+		const t = tRaw * tRaw * (3 - 2 * tRaw);
+		const pos = t * paletteLen;
+		const idx0 = Math.floor(pos);
+		const idx1 = Math.min(paletteLen, idx0 + 1);
+		const mix = pos - idx0;
+		const base0 = idx0 * 3;
+		const base1 = idx1 * 3;
+
+		const r0 = currentPalette[base0];
+		const g0 = currentPalette[base0 + 1];
+		const b0 = currentPalette[base0 + 2];
+		const r1 = currentPalette[base1];
+		const g1 = currentPalette[base1 + 1];
+		const b1 = currentPalette[base1 + 2];
+
+		pixels[p] = (r0 + (r1 - r0) * mix) | 0;
+		pixels[p + 1] = (g0 + (g1 - g0) * mix) | 0;
+		pixels[p + 2] = (b0 + (b1 - b0) * mix) | 0;
+		pixels[p + 3] = 255;
+	}
+
+	targetCtx.putImageData(image, 0, 0);
+}
+
+async function renderScreenshot(width: number, height: number, reduceSize: boolean) {
+	if (isRendering) {
+		return;
+	}
+
+	isRendering = true;
+	renderStatusEl.textContent = "rendering screenshot";
+	screenshotButton.disabled = true;
+
+	const iterForRender = Math.max(10, maxIter);
+	const values = await new Promise<Float32Array>(resolve => {
+		const token = ++renderToken;
+		const rowsPerWorker = Math.ceil(height / workers.length);
+		const buffer = new Float32Array(width * height);
+		let completed = 0;
+
+		workers.forEach((worker, i) => {
+			const yStart = i * rowsPerWorker;
+			const yEnd = Math.min(height, yStart + rowsPerWorker);
+			if (yStart >= yEnd) {
+				completed += 1;
+				return;
+			}
+
+			worker.onmessage = event => {
+				const data = event.data as WorkerResponse;
+				if (data.renderId !== token) {
+					return;
+				}
+				buffer.set(new Float32Array(data.values), data.yStart * width);
+				completed += 1;
+				if (completed === workers.length) {
+					resolve(buffer);
+				}
+			};
+
+			worker.postMessage({
+				renderId: token,
+				width,
+				height,
+				yStart,
+				yEnd,
+				maxIter: iterForRender,
+				view,
+			});
+		});
+	});
+
+	const outCanvas = document.createElement("canvas");
+	outCanvas.width = width;
+	outCanvas.height = height;
+	const outCtx = outCanvas.getContext("2d");
+	if (!outCtx) {
+		isRendering = false;
+		screenshotButton.disabled = false;
+		renderStatusEl.textContent = "done";
+		return;
+	}
+
+	paintToContext(values, width, height, outCtx, iterForRender);
+
+	const blob = await new Promise<Blob | null>(resolve => {
+		if (reduceSize) {
+			outCanvas.toBlob(resolve, "image/jpeg", 0.85);
+		} else {
+			outCanvas.toBlob(resolve, "image/png");
+		}
+	});
+
+	if (blob) {
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = `mandelbrot-${width}x${height}.${reduceSize ? "jpg" : "png"}`;
+		link.click();
+		URL.revokeObjectURL(url);
+	}
+
+	isRendering = false;
+	screenshotButton.disabled = false;
+	renderStatusEl.textContent = "done";
+}
+
 function zoomAt(canvasX: number, canvasY: number, factor: number) {
 	const p = screenToComplex(canvasX, canvasY);
 	const width = (view.maxX - view.minX) * factor;
@@ -380,6 +514,35 @@ function renderWithMode() {
 	} else {
 		renderMandelbrot();
 	}
+}
+
+function setResolutionInputs(width: number, height: number, disable: boolean) {
+	resWidthInput.value = String(width);
+	resHeightInput.value = String(height);
+	resWidthInput.disabled = disable;
+	resHeightInput.disabled = disable;
+}
+
+function getSelectedResolution() {
+	const preset = resSelect.value;
+	const presets: Record<string, [number, number]> = {
+		current: [canvas.width, canvas.height],
+		"480p": [854, 480],
+		"720p": [1280, 720],
+		"1080p": [1920, 1080],
+		"1440p": [2560, 1440],
+		"2k": [2048, 1080],
+		"4k": [3840, 2160],
+		"8k": [7680, 4320],
+	};
+
+	if (preset !== "custom" && presets[preset]) {
+		return presets[preset];
+	}
+
+	const width = Math.max(64, Math.min(10000, Number.parseInt(resWidthInput.value, 10) || canvas.width));
+	const height = Math.max(64, Math.min(10000, Number.parseInt(resHeightInput.value, 10) || canvas.height));
+	return [width, height] as const;
 }
 
 function queuePreviewFrame() {
@@ -656,6 +819,20 @@ previewScaleSelect.addEventListener("change", () => {
 	renderWithMode();
 });
 
+resSelect.addEventListener("change", () => {
+	if (resSelect.value === "custom") {
+		setResolutionInputs(canvas.width, canvas.height, false);
+		return;
+	}
+	const [w, h] = getSelectedResolution();
+	setResolutionInputs(w, h, true);
+});
+
+screenshotButton.addEventListener("click", () => {
+	const [w, h] = getSelectedResolution();
+	renderScreenshot(w, h, reduceSizeInput.checked);
+});
+
 paletteSelect.addEventListener("change", () => {
 	if (isRendering) {
 		return;
@@ -686,3 +863,4 @@ resizeCanvasToWindow();
 view = makeDefaultView();
 syncPanelState();
 renderWithMode();
+setResolutionInputs(canvas.width, canvas.height, true);
