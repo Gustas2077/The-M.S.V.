@@ -193,6 +193,10 @@ canvas {
 	gap: 4px;
 }
 
+.controls .full-span {
+	grid-column: 1 / -1;
+}
+
 .controls span {
 	font-size: 12px;
 	color: #b1c1d8;
