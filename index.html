@@ -10,14 +10,18 @@
 	</head>
 	<body>
 		<main class="app-shell">
-			<header class="topbar">
-				<h1>The M.S.V.</h1>
-				<p>Mandelbrot Set Viewer</p>
-			</header>
+			<section class="viewer">
+				<canvas id="canvas" data-canvas></canvas>
+			</section>
 
-			<section class="layout">
-				<section class="viewer">
-					<canvas id="canvas" width="1024" height="576" data-canvas></canvas>
+			<aside class="panel">
+				<header class="panel-header">
+					<h1>The M.S.V.</h1>
+					<p>Mandelbrot Set Viewer</p>
+				</header>
+
+				<div class="panel-section">
+					<h2>Controls</h2>
 					<div class="controls">
 						<label>
 							<span>Center X</span>
@@ -33,16 +37,18 @@
 						</label>
 						<button type="button" data-reset-button>Reset View</button>
 					</div>
-				</section>
+				</div>
 
-				<aside class="panel">
+				<div class="panel-section">
 					<h2>Render Stats</h2>
 					<ul>
 						<li><strong>Render time:</strong> <span data-render-ms>0</span> ms</li>
 						<li><strong>Workers:</strong> <span data-worker-count>0</span></li>
 						<li><strong>Status:</strong> <span data-render-status>idle</span></li>
 					</ul>
+				</div>
 
+				<div class="panel-section">
 					<h2>Mouse</h2>
 					<ul>
 						<li><strong>Canvas X:</strong> <span data-canvas-x>0</span></li>
@@ -50,7 +56,9 @@
 						<li><strong>Real:</strong> <span data-real-x>0</span></li>
 						<li><strong>Imag:</strong> <span data-imag-y>0</span></li>
 					</ul>
+				</div>
 
+				<div class="panel-section">
 					<h2>View Bounds</h2>
 					<ul>
 						<li><strong>Min X:</strong> <span data-min-x>-2</span></li>
@@ -58,8 +66,8 @@
 						<li><strong>Min Y:</strong> <span data-min-y>-1</span></li>
 						<li><strong>Max Y:</strong> <span data-max-y>1</span></li>
 					</ul>
-				</aside>
-			</section>
+				</div>
+			</aside>
 		</main>
 	</body>
 </html>

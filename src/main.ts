@@ -62,6 +62,12 @@ let dragCurrentPoint = { x: 0, y: 0 };
 let dragStartView: ViewBounds = { ...DEFAULT_VIEW };
 let dragPreviewCanvas: HTMLCanvasElement | null = null;
 
+function resizeCanvasToWindow() {
+	const dpr = window.devicePixelRatio || 1;
+	canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
+	canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
+}
+
 const workerCount = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1 || 1));
 workerCountEl.textContent = String(workerCount);
 
@@ -357,4 +363,10 @@ window.addEventListener("beforeunload", () => {
 	workers.forEach(worker => worker.terminate());
 });
 
+window.addEventListener("resize", () => {
+	resizeCanvasToWindow();
+	renderMandelbrot();
+});
+
+resizeCanvasToWindow();
 renderMandelbrot();
