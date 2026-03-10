@@ -39,6 +39,8 @@ const previewEnabledInput = getRequiredElement<HTMLInputElement>("[data-preview-
 const previewScaleSelect = getRequiredElement<HTMLSelectElement>("[data-preview-scale]");
 const paletteSelect = getRequiredElement<HTMLSelectElement>("[data-palette]");
 const resetButton = getRequiredElement<HTMLButtonElement>("[data-reset-button]");
+const introOverlay = getRequiredElement<HTMLElement>("[data-intro]");
+const introStartButton = getRequiredElement<HTMLButtonElement>("[data-intro-start]");
 const renderMsEl = getRequiredElement<HTMLElement>("[data-render-ms]");
 const workerCountEl = getRequiredElement<HTMLElement>("[data-worker-count]");
 const renderStatusEl = getRequiredElement<HTMLElement>("[data-render-status]");
@@ -635,6 +637,11 @@ iterationsInput.addEventListener("change", () => {
 
 previewEnabledInput.addEventListener("change", () => {
 	previewEnabled = previewEnabledInput.checked;
+	renderWithMode();
+});
+
+introStartButton.addEventListener("click", () => {
+	introOverlay.classList.add("hidden");
 	renderWithMode();
 });
 
