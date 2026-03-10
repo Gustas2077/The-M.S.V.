@@ -33,6 +33,8 @@ const yInput = getRequiredElement<HTMLInputElement>("[data-y]");
 const iterationsInput = getRequiredElement<HTMLInputElement>("[data-iterations]");
 const iterDoubleButton = getRequiredElement<HTMLButtonElement>("[data-iter-double]");
 const iterHalfButton = getRequiredElement<HTMLButtonElement>("[data-iter-half]");
+const panelToggleButton = getRequiredElement<HTMLButtonElement>("[data-panel-toggle]");
+const panelEl = getRequiredElement<HTMLElement>(".panel");
 const previewEnabledInput = getRequiredElement<HTMLInputElement>("[data-preview-enabled]");
 const previewScaleSelect = getRequiredElement<HTMLSelectElement>("[data-preview-scale]");
 const paletteSelect = getRequiredElement<HTMLSelectElement>("[data-palette]");
@@ -85,11 +87,17 @@ let isRendering = false;
 let lowResCanvas: HTMLCanvasElement | null = null;
 let previewFrameQueued = false;
 let activeRenderIter = maxIter;
+let panelCollapsed = false;
 
 function resizeCanvasToWindow() {
 	const dpr = window.devicePixelRatio || 1;
 	canvas.width = Math.max(1, Math.floor(window.innerWidth * dpr));
 	canvas.height = Math.max(1, Math.floor(window.innerHeight * dpr));
+}
+
+function syncPanelState() {
+	panelEl.classList.toggle("collapsed", panelCollapsed);
+	panelToggleButton.classList.toggle("collapsed", panelCollapsed);
 }
 
 function makeDefaultView(): ViewBounds {
@@ -630,6 +638,11 @@ previewEnabledInput.addEventListener("change", () => {
 	renderWithMode();
 });
 
+panelToggleButton.addEventListener("click", () => {
+	panelCollapsed = !panelCollapsed;
+	syncPanelState();
+});
+
 previewScaleSelect.addEventListener("change", () => {
 	const next = Number.parseFloat(previewScaleSelect.value);
 	previewScale = Math.max(0.2, Math.min(0.9, Number.isFinite(next) ? next : PREVIEW_SCALE_DEFAULT));
@@ -658,9 +671,11 @@ window.addEventListener("beforeunload", () => {
 window.addEventListener("resize", () => {
 	resizeCanvasToWindow();
 	view = makeDefaultView();
+	syncPanelState();
 	renderWithMode();
 });
 
 resizeCanvasToWindow();
 view = makeDefaultView();
+syncPanelState();
 renderWithMode();
