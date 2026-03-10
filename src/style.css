@@ -202,6 +202,12 @@ canvas {
 	color: #b1c1d8;
 }
 
+.control-warning {
+	margin: 6px 0 0;
+	font-size: 11px;
+	color: #e4b070;
+}
+
 .controls input,
 .controls button {
 	width: 100%;

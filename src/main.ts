@@ -38,6 +38,8 @@ const panelEl = getRequiredElement<HTMLElement>(".panel");
 const previewEnabledInput = getRequiredElement<HTMLInputElement>("[data-preview-enabled]");
 const previewScaleSelect = getRequiredElement<HTMLSelectElement>("[data-preview-scale]");
 const paletteSelect = getRequiredElement<HTMLSelectElement>("[data-palette]");
+const workerUnlockInput = getRequiredElement<HTMLInputElement>("[data-worker-unlock]");
+const workerCountSelect = getRequiredElement<HTMLSelectElement>("[data-worker-count-select]");
 const resetButton = getRequiredElement<HTMLButtonElement>("[data-reset-button]");
 const introOverlay = getRequiredElement<HTMLElement>("[data-intro]");
 const introStartButton = getRequiredElement<HTMLButtonElement>("[data-intro-start]");
@@ -119,10 +121,35 @@ function makeDefaultView(): ViewBounds {
 	};
 }
 
-const workerCount = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1 || 1));
-workerCountEl.textContent = String(workerCount);
+function rebuildWorkers() {
+	const manual = workerUnlockInput.checked;
+	let nextCount = defaultWorkerCount;
 
-const workers = Array.from(
+	if (manual) {
+		const parsed = Number.parseInt(workerCountSelect.value, 10);
+		nextCount = Number.isFinite(parsed) && parsed > 0 ? parsed : defaultWorkerCount;
+	}
+
+	nextCount = Math.max(1, Math.min(16, nextCount));
+
+	if (nextCount === workerCount) {
+		return;
+	}
+
+	workers.forEach(worker => worker.terminate());
+	workers = Array.from(
+		{ length: nextCount },
+		() => new Worker(new URL("./render.worker.ts", import.meta.url), { type: "module" })
+	);
+	workerCount = nextCount;
+	workerCountEl.textContent = String(workerCount);
+	renderWithMode();
+}
+
+const defaultWorkerCount = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1 || 1));
+let workerCount = defaultWorkerCount;
+workerCountEl.textContent = String(workerCount);
+let workers = Array.from(
 	{ length: workerCount },
 	() => new Worker(new URL("./render.worker.ts", import.meta.url), { type: "module" })
 );
@@ -813,6 +840,19 @@ panelToggleButton.addEventListener("click", () => {
 	syncPanelState();
 });
 
+workerUnlockInput.addEventListener("change", () => {
+	const enabled = workerUnlockInput.checked;
+	workerCountSelect.disabled = !enabled;
+	if (!enabled) {
+		workerCountSelect.value = "auto";
+	}
+	rebuildWorkers();
+});
+
+workerCountSelect.addEventListener("change", () => {
+	rebuildWorkers();
+});
+
 previewScaleSelect.addEventListener("change", () => {
 	const next = Number.parseFloat(previewScaleSelect.value);
 	previewScale = Math.max(0.2, Math.min(0.9, Number.isFinite(next) ? next : PREVIEW_SCALE_DEFAULT));
@@ -862,5 +902,6 @@ window.addEventListener("resize", () => {
 resizeCanvasToWindow();
 view = makeDefaultView();
 syncPanelState();
+workerCountSelect.value = "auto";
 renderWithMode();
 setResolutionInputs(canvas.width, canvas.height, true);

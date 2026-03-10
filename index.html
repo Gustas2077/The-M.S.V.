@@ -86,6 +86,33 @@
 								<option value="ember">Ember</option>
 							</select>
 						</label>
+						<label class="full-span">
+							<span>Workers</span>
+							<div class="control-inline">
+								<input type="checkbox" data-worker-unlock />
+								<span>Unlock manual workers (advanced)</span>
+							</div>
+							<p class="control-warning">
+								Warning: too many workers can slow down or freeze the UI.
+							</p>
+						</label>
+						<label>
+							<span>Worker Count</span>
+							<select data-worker-count-select disabled>
+								<option value="auto" selected>Auto</option>
+								<option value="1">1</option>
+								<option value="2">2</option>
+								<option value="3">3</option>
+								<option value="4">4</option>
+								<option value="5">5</option>
+								<option value="6">6</option>
+								<option value="7">7</option>
+								<option value="8">8</option>
+								<option value="10">10</option>
+								<option value="12">12</option>
+								<option value="16">16</option>
+							</select>
+						</label>
 						<button type="button" data-reset-button>Reset View</button>
 					</div>
 				</div>
