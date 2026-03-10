@@ -61,6 +61,13 @@ let dragStartPoint = { x: 0, y: 0 };
 let dragCurrentPoint = { x: 0, y: 0 };
 let dragStartView: ViewBounds = { ...DEFAULT_VIEW };
 let dragPreviewCanvas: HTMLCanvasElement | null = null;
+let wheelZoomTimer: number | null = null;
+let wheelZoomAccum = 0;
+let wheelZoomQueued = false;
+let isTouchPanning = false;
+let touchStartPoint = { x: 0, y: 0 };
+let touchCurrentPoint = { x: 0, y: 0 };
+let touchStartView: ViewBounds = { ...DEFAULT_VIEW };
 
 function resizeCanvasToWindow() {
 	const dpr = window.devicePixelRatio || 1;
@@ -237,6 +244,17 @@ function getCanvasPointFromClient(clientX: number, clientY: number) {
 	};
 }
 
+function scheduleWheelRender() {
+	if (wheelZoomQueued) {
+		return;
+	}
+	wheelZoomQueued = true;
+	requestAnimationFrame(() => {
+		wheelZoomQueued = false;
+		renderMandelbrot();
+	});
+}
+
 canvas.addEventListener("mousemove", event => {
 	const p = getCanvasPointFromClient(event.clientX, event.clientY);
 	const c = screenToComplex(p.x, p.y);
@@ -246,6 +264,31 @@ canvas.addEventListener("mousemove", event => {
 	realXEl.textContent = c.re.toFixed(10);
 	imagYEl.textContent = c.im.toFixed(10);
 });
+
+canvas.addEventListener(
+	"wheel",
+	event => {
+		event.preventDefault();
+		const p = getCanvasPointFromClient(event.clientX, event.clientY);
+		const delta = Math.max(-120, Math.min(120, event.deltaY));
+		wheelZoomAccum += delta;
+
+		const zoomFactor = Math.pow(1.0015, wheelZoomAccum);
+		zoomAt(p.x, p.y, zoomFactor);
+		wheelZoomAccum = 0;
+
+		scheduleWheelRender();
+
+		if (wheelZoomTimer !== null) {
+			window.clearTimeout(wheelZoomTimer);
+		}
+		wheelZoomTimer = window.setTimeout(() => {
+			renderMandelbrot();
+			wheelZoomTimer = null;
+		}, 90);
+	},
+	{ passive: false }
+);
 
 canvas.addEventListener("mousedown", event => {
 	if (event.button !== 0) {
@@ -267,6 +310,70 @@ canvas.addEventListener("mousedown", event => {
 	if (previewCtx) {
 		previewCtx.drawImage(canvas, 0, 0);
 	}
+});
+
+canvas.addEventListener("pointerdown", event => {
+	if (event.pointerType !== "touch") {
+		return;
+	}
+	event.preventDefault();
+	const p = getCanvasPointFromClient(event.clientX, event.clientY);
+	isTouchPanning = true;
+	touchStartPoint = p;
+	touchCurrentPoint = p;
+	touchStartView = { ...view };
+	dragPreviewCanvas = document.createElement("canvas");
+	dragPreviewCanvas.width = canvas.width;
+	dragPreviewCanvas.height = canvas.height;
+	const previewCtx = dragPreviewCanvas.getContext("2d");
+	if (previewCtx) {
+		previewCtx.drawImage(canvas, 0, 0);
+	}
+	canvas.setPointerCapture(event.pointerId);
+});
+
+canvas.addEventListener("pointermove", event => {
+	if (!isTouchPanning || event.pointerType !== "touch") {
+		return;
+	}
+	const p = getCanvasPointFromClient(event.clientX, event.clientY);
+	touchCurrentPoint = p;
+
+	const dx = p.x - touchStartPoint.x;
+	const dy = p.y - touchStartPoint.y;
+	const scaleX = (touchStartView.maxX - touchStartView.minX) / canvas.width;
+	const scaleY = (touchStartView.maxY - touchStartView.minY) / canvas.height;
+
+	view.minX = touchStartView.minX - dx * scaleX;
+	view.maxX = touchStartView.maxX - dx * scaleX;
+	view.minY = touchStartView.minY - dy * scaleY;
+	view.maxY = touchStartView.maxY - dy * scaleY;
+
+	if (dragPreviewCanvas) {
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		ctx.drawImage(dragPreviewCanvas, dx, dy);
+	}
+});
+
+canvas.addEventListener("pointerup", event => {
+	if (event.pointerType !== "touch") {
+		return;
+	}
+	if (isTouchPanning) {
+		const dx = touchCurrentPoint.x - touchStartPoint.x;
+		const dy = touchCurrentPoint.y - touchStartPoint.y;
+		const scaleX = (touchStartView.maxX - touchStartView.minX) / canvas.width;
+		const scaleY = (touchStartView.maxY - touchStartView.minY) / canvas.height;
+
+		view.minX = touchStartView.minX - dx * scaleX;
+		view.maxX = touchStartView.maxX - dx * scaleX;
+		view.minY = touchStartView.minY - dy * scaleY;
+		view.maxY = touchStartView.maxY - dy * scaleY;
+		renderMandelbrot();
+	}
+	isTouchPanning = false;
+	dragPreviewCanvas = null;
+	canvas.releasePointerCapture(event.pointerId);
 });
 
 window.addEventListener("mousemove", event => {
