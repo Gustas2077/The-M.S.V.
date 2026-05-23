@@ -1,0 +1,189 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<link rel="icon" type="image/x-icon" href="/typescript.svg" />
+		<title>The M.S.V.</title>
+		<link rel="stylesheet" href="/src/style.css" />
+		<script type="module" src="/src/main.ts"></script>
+	</head>
+	<body>
+		<main class="app-shell">
+			<section class="viewer">
+				<canvas id="canvas" data-canvas></canvas>
+			</section>
+
+			<button class="panel-toggle" type="button" data-panel-toggle>
+				<span class="toggle-arrow">→</span>
+				<span>Controls</span>
+			</button>
+
+			<div class="intro-overlay" data-intro>
+				<div class="intro-card">
+					<h1>The M.S.V.</h1>
+					<p class="intro-subtitle">Mandelbrot Set Viewer</p>
+					<p>
+						The Mandelbrot set is a famous fractal formed by iterating
+						<code>z = z² + c</code> and coloring each point by how quickly it diverges.
+					</p>
+					<ul>
+						<li>Scroll to zoom, drag to pan.</li>
+						<li>Use the right panel to tweak iterations and color palette.</li>
+						<li>Toggle Low-res preview to speed up interaction.</li>
+					</ul>
+					<button class="intro-start" type="button" data-intro-start>Start Exploring</button>
+				</div>
+			</div>
+
+			<aside class="panel">
+				<header class="panel-header">
+					<h1>The M.S.V.</h1>
+					<p>Mandelbrot Set Viewer</p>
+				</header>
+
+				<div class="panel-section">
+					<h2>Controls</h2>
+					<div class="controls">
+						<label>
+							<span>Center X</span>
+							<input type="number" value="-0.5" step="0.0001" data-x />
+						</label>
+						<label>
+							<span>Center Y</span>
+							<input type="number" value="0" step="0.0001" data-y />
+						</label>
+						<label>
+							<span>Iterations</span>
+							<input type="number" value="400" min="1" step="50" data-iterations />
+						</label>
+						<div class="control-pair">
+							<button type="button" data-iter-double>×2</button>
+							<button type="button" data-iter-half>÷2</button>
+						</div>
+						<label>
+							<span>Preview</span>
+							<div class="control-inline">
+								<input type="checkbox" data-preview-enabled />
+								<span>Low-res mode</span>
+							</div>
+						</label>
+						<label>
+							<span>Preview Scale</span>
+							<select data-preview-scale>
+								<option value="0.35" selected>0.35x</option>
+								<option value="0.5">0.5x</option>
+								<option value="0.7">0.7x</option>
+								<option value="0.85">0.85x</option>
+							</select>
+						</label>
+						<label>
+							<span>Palette</span>
+							<select data-palette>
+								<option value="turbo" selected>Turbo</option>
+								<option value="sinebow">Sinebow</option>
+								<option value="noir">Noir</option>
+								<option value="ember">Ember</option>
+								<option value="deep-red">Crimson Abyss</option>
+								<option value="deep-purple">Violet Void</option>
+							</select>
+						</label>
+						<label class="full-span">
+							<span>Workers</span>
+							<div class="control-inline">
+								<input type="checkbox" data-worker-unlock />
+								<span>Unlock manual workers (advanced)</span>
+							</div>
+							<p class="control-warning">
+								Warning: too many workers can slow down or freeze the UI.
+							</p>
+						</label>
+						<label>
+							<span>Worker Count</span>
+							<select data-worker-count-select disabled>
+								<option value="auto" selected>Auto</option>
+								<option value="1">1</option>
+								<option value="2">2</option>
+								<option value="3">3</option>
+								<option value="4">4</option>
+								<option value="5">5</option>
+								<option value="6">6</option>
+								<option value="7">7</option>
+								<option value="8">8</option>
+								<option value="10">10</option>
+								<option value="12">12</option>
+								<option value="16">16</option>
+							</select>
+						</label>
+						<button type="button" data-reset-button>Reset View</button>
+					</div>
+				</div>
+
+				<div class="panel-section">
+					<h2>Screenshot</h2>
+					<div class="controls screenshot-controls">
+						<label class="full-span">
+							<span>Resolution</span>
+							<select data-res-select>
+								<option value="current" selected>Current</option>
+								<option value="480p">480p</option>
+								<option value="720p">720p</option>
+								<option value="1080p">1080p</option>
+								<option value="1440p">1440p</option>
+								<option value="2k">2K</option>
+								<option value="4k">4K</option>
+								<option value="8k">8K</option>
+								<option value="custom">Custom</option>
+							</select>
+						</label>
+						<label>
+							<span>Width</span>
+							<input type="number" min="64" max="10000" step="1" data-res-width />
+						</label>
+						<label>
+							<span>Height</span>
+							<input type="number" min="64" max="10000" step="1" data-res-height />
+						</label>
+						<label class="full-span">
+							<span>File Size</span>
+							<div class="control-inline">
+								<input type="checkbox" data-reduce-size />
+								<span>Reduce size (slower)</span>
+							</div>
+						</label>
+						<button type="button" class="full-span" data-screenshot>Save Screenshot</button>
+					</div>
+				</div>
+
+				<div class="panel-section">
+					<h2>Render Stats</h2>
+					<ul>
+						<li><strong>Render time:</strong> <span data-render-ms>0</span> ms</li>
+						<li><strong>Workers:</strong> <span data-worker-count>0</span></li>
+						<li><strong>Status:</strong> <span data-render-status>idle</span></li>
+					</ul>
+				</div>
+
+				<div class="panel-section">
+					<h2>Mouse</h2>
+					<ul>
+						<li><strong>Canvas X:</strong> <span data-canvas-x>0</span></li>
+						<li><strong>Canvas Y:</strong> <span data-canvas-y>0</span></li>
+						<li><strong>Real:</strong> <span data-real-x>0</span></li>
+						<li><strong>Imag:</strong> <span data-imag-y>0</span></li>
+					</ul>
+				</div>
+
+				<div class="panel-section">
+					<h2>View Bounds</h2>
+					<ul>
+						<li><strong>Min X:</strong> <span data-min-x>-2</span></li>
+						<li><strong>Max X:</strong> <span data-max-x>1</span></li>
+						<li><strong>Min Y:</strong> <span data-min-y>-1</span></li>
+						<li><strong>Max Y:</strong> <span data-max-y>1</span></li>
+					</ul>
+				</div>
+			</aside>
+		</main>
+	</body>
+</html>
