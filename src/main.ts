@@ -227,15 +227,10 @@ function deepRedColor(x: number): [number, number, number] {
 
 function deepPurpleColor(x: number): [number, number, number] {
 	const t = clamp01(x);
-	if (t < 0.18) {
-		return [0, 0, 0];
-	}
-	const u = (t - 0.18) / 0.82;
-	return [
-		clamp01(0.12 + 0.55 * Math.pow(u, 0.8)),
-		0,
-		clamp01(0.22 + 0.78 * Math.pow(u, 0.85)),
-	];
+	const r = Math.pow(t, 1.2) * 0.55;
+	const g = 0;
+	const b = 0.22 + Math.pow(t, 0.9) * 0.78;
+	return [clamp01(r), clamp01(g), clamp01(b)];
 }
 
 function buildPalette(size: number, mode: string): Uint8Array {
